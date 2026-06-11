@@ -17,6 +17,11 @@ const app = express()
 app.use(cors())
 app.use(express.json())
 
+// Health check for Coolify / load balancers
+app.get('/api/health', (_req, res) => {
+  res.status(200).json({ status: 'ok' })
+})
+
 app.post('/api/import-product', async (req, res) => {
   const { url } = req.body
 

@@ -1,0 +1,1 @@
+ALTER TABLE materials ADD COLUMN quantity INTEGER DEFAULT 1;

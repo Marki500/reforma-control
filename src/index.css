@@ -1,0 +1,29 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --color-stone-50: #faf8f5;
+  --color-stone-100: #f5f0eb;
+  --color-stone-200: #ebe3d9;
+  --color-stone-300: #d6cbbd;
+  --color-stone-400: #b8a992;
+  --color-stone-500: #9c8b73;
+  --color-stone-600: #8b7355;
+  --color-stone-700: #6b5a42;
+  --color-stone-800: #4a3f30;
+  --color-stone-900: #3a3227;
+
+  --color-olive: #7a8a6e;
+  --color-olive-light: #e8efe2;
+  --color-terracotta: #c57a6b;
+  --color-terracotta-light: #f5e6e2;
+  --color-gold: #d4a853;
+  --color-gold-light: #faf2e1;
+  --color-amber: #d9a84a;
+  --color-amber-light: #fdf5e6;
+  --color-slate: #64748b;
+  --color-slate-light: #f1f5f9;
+
+  --font-sans: "Inter", "Manrope", "DM Sans", system-ui, sans-serif;
+  --font-serif: "Playfair Display", "Cormorant Garamond", serif;
+}

@@ -120,10 +120,10 @@ export default function Settings() {
             return (
               <div
                 key={item.id}
-                className="flex items-center justify-between rounded-xl bg-white px-4 py-2.5 shadow-sm"
+                className="flex items-center justify-between gap-3 rounded-xl bg-white px-4 py-3 shadow-sm"
               >
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-stone-700">{item.name}</span>
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-sm text-stone-700">{item.name}</span>
                   {isDefault && (
                     <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-medium text-stone-400">
                       por defecto
@@ -133,13 +133,13 @@ export default function Settings() {
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => openEdit(type, item)}
-                    className="rounded-lg p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+                    className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
                   >
                     <Pencil size={15} />
                   </button>
                   <button
                     onClick={() => handleDelete(type, item)}
-                    className="rounded-lg p-1.5 text-stone-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                    className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-red-50 hover:text-red-500"
                   >
                     <Trash2 size={15} />
                   </button>

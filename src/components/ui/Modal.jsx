@@ -29,12 +29,12 @@ export function Modal({ open, onClose, title, children }) {
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-12 backdrop-blur-sm transition-all"
       onClick={(e) => e.target === overlayRef.current && onClose()}
     >
-      <div className="w-full max-w-lg animate-[fadeIn_0.2s_ease-out] rounded-2xl bg-white p-6 shadow-xl">
+      <div className="w-full max-w-lg animate-[fadeIn_0.2s_ease-out] rounded-2xl bg-white p-4 sm:p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-stone-800">{title}</h2>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+            className="rounded-lg p-2.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
           >
             <X size={20} />
           </button>

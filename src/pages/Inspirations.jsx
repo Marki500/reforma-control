@@ -94,7 +94,7 @@ export default function Inspirations() {
           </Button>
         </div>
       ) : (
-        <div className="columns-2 gap-4 sm:columns-3 lg:columns-4">
+        <div className="columns-1 gap-4 sm:columns-2 md:columns-3 lg:columns-4">
           {inspirations.map((item) => (
             <div
               key={item.id}
@@ -124,7 +124,7 @@ export default function Inspirations() {
                     {item.rooms.name}
                   </span>
                 )}
-                <div className="flex items-center gap-2 pt-1 opacity-0 transition-opacity group-hover:opacity-100">
+                <div className="flex items-center gap-2 pt-1 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
                   <a
                     href={item.url}
                     target="_blank"

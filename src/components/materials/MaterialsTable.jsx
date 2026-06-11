@@ -13,9 +13,9 @@ export default function MaterialsTable({ materials, onEdit, onDelete, onToggleCo
             <th className="px-4 py-3">Nombre</th>
             <th className="hidden px-4 py-3 md:table-cell">Categoría</th>
             <th className="hidden px-4 py-3 md:table-cell">Estancia</th>
-            <th className="hidden px-4 py-3 sm:table-cell">Tienda</th>
+            <th className="hidden px-4 py-3 md:table-cell">Tienda</th>
             <th className="px-4 py-3">Precio</th>
-            <th className="hidden px-4 py-3 sm:table-cell">Cant.</th>
+            <th className="hidden px-4 py-3 md:table-cell">Cant.</th>
             <th className="hidden px-4 py-3 lg:table-cell">Estado</th>
             <th className="hidden px-4 py-3 lg:table-cell">Prioridad</th>
             <th className="px-4 py-3">Acciones</th>
@@ -63,8 +63,8 @@ export default function MaterialsTable({ materials, onEdit, onDelete, onToggleCo
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-3">
-                  <p className="font-medium text-stone-800">{material.name}</p>
+                <td className="max-w-[160px] px-4 py-3 sm:max-w-none">
+                  <p className="truncate font-medium text-stone-800" title={material.name}>{material.name}</p>
                   {(material.brand || material.model) && (
                     <p className="text-xs text-stone-400">
                       {[material.brand, material.model].filter(Boolean).join(' · ')}
@@ -107,33 +107,33 @@ export default function MaterialsTable({ materials, onEdit, onDelete, onToggleCo
                   )}
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-0.5">
                     {material.product_url && (
                       <a
                         href={material.product_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="rounded-lg p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+                        className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
                       >
                         <ExternalLink size={16} />
                       </a>
                     )}
                     <button
                       onClick={() => onEdit(material)}
-                      className="rounded-lg p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+                      className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
                     >
                       <Edit3 size={16} />
                     </button>
                     <button
                       onClick={() => onDuplicate(material)}
-                      className="rounded-lg p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+                      className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
                       title="Duplicar"
                     >
                       <Copy size={16} />
                     </button>
                     <button
                       onClick={() => onDelete(material)}
-                      className="rounded-lg p-1.5 text-stone-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                      className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-red-50 hover:text-red-500"
                     >
                       <Trash2 size={16} />
                     </button>

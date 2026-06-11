@@ -142,7 +142,7 @@ export default function FloorPlan() {
                       e.stopPropagation()
                       handleDelete(plan)
                     }}
-                    className="rounded-lg p-1.5 text-stone-400 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
+                    className="rounded-lg p-2 text-stone-400 opacity-100 sm:opacity-0 sm:transition-all sm:hover:bg-red-50 sm:hover:text-red-500 sm:group-hover:opacity-100"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -201,11 +201,11 @@ export default function FloorPlan() {
             className="relative max-h-[90vh] max-w-[90vw] overflow-hidden rounded-2xl bg-white shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-stone-200 px-5 py-3">
-              <h3 className="font-semibold text-stone-800">{viewImage.name}</h3>
+            <div className="flex items-center justify-between gap-3 border-b border-stone-200 px-4 py-3 sm:px-5">
+              <h3 className="min-w-0 truncate font-semibold text-stone-800">{viewImage.name}</h3>
               <button
                 onClick={() => setViewImage(null)}
-                className="rounded-lg p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-600"
+                className="flex-shrink-0 rounded-lg p-2 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
               >
                 <X size={18} />
               </button>

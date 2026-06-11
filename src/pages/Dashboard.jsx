@@ -146,20 +146,20 @@ export default function Dashboard() {
           <h1 className="text-2xl font-semibold text-stone-800">Dashboard</h1>
           <p className="mt-1 text-sm text-stone-500">Control general de tu reforma</p>
         </div>
-        <div className="flex items-center gap-3">
+         <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={() => navigate('/materials?action=import')}
-            className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 transition-all hover:bg-stone-50"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-stone-300 bg-white px-2.5 py-2 text-sm font-medium text-stone-700 transition-all hover:bg-stone-50 sm:gap-2 sm:px-4"
           >
             <ExternalLink size={16} />
-            Importar URL
+            <span className="hidden sm:inline">Importar URL</span>
           </button>
           <button
             onClick={() => navigate('/materials?action=add')}
-            className="inline-flex items-center gap-2 rounded-xl bg-stone-700 px-4 py-2 text-sm font-medium text-white transition-all hover:bg-stone-800"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-stone-700 px-2.5 py-2 text-sm font-medium text-white transition-all hover:bg-stone-800 sm:gap-2 sm:px-4"
           >
             <Plus size={16} />
-            Añadir material
+            <span className="hidden sm:inline">Añadir material</span>
           </button>
         </div>
       </div>
@@ -247,7 +247,7 @@ export default function Dashboard() {
 
               return (
                 <div key={cat.id} className="rounded-xl border border-stone-100 p-4">
-                  <div className="mb-2 flex items-center justify-between">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <span className="text-sm font-medium text-stone-700">{cat.name}</span>
                     <div className="flex items-center gap-2">
                       {editingBudget === cat.id ? (

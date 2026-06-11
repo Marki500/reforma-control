@@ -133,7 +133,7 @@ export default function Notes() {
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-sm text-stone-600 outline-none focus:border-stone-400"
+              className="min-h-[44px] rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-sm text-stone-600 outline-none focus:border-stone-400"
             >
               {categories.map((c) => (
                 <option key={c.value} value={c.value}>{c.label}</option>
@@ -148,7 +148,7 @@ export default function Notes() {
             <select
               value={roomId}
               onChange={(e) => setRoomId(e.target.value)}
-              className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-sm text-stone-600 outline-none focus:border-stone-400"
+              className="min-h-[44px] rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-sm text-stone-600 outline-none focus:border-stone-400"
             >
               <option value="">Sin estancia</option>
               {rooms.map((r) => (
@@ -235,16 +235,16 @@ export default function Notes() {
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
                   <button
                     onClick={() => startEdit(note)}
-                    className="rounded-lg p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+                    className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
                   >
                     <Pencil size={14} />
                   </button>
                   <button
                     onClick={() => handleDelete(note)}
-                    className="rounded-lg p-1.5 text-stone-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                    className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-red-50 hover:text-red-500"
                   >
                     <Trash2 size={14} />
                   </button>

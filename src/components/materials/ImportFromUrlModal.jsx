@@ -95,16 +95,16 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
             <div>
               <p className="text-sm font-medium text-red-700">Error</p>
               <p className="text-sm text-red-600">{error}</p>
-              <div className="mt-2 flex gap-2">
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                 <button
                   onClick={handleExtract}
-                  className="text-sm font-medium text-red-700 hover:underline"
+                  className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100"
                 >
                   Reintentar
                 </button>
                 <button
                   onClick={handleManual}
-                  className="text-sm font-medium text-stone-700 hover:underline"
+                  className="rounded-lg bg-stone-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-800"
                 >
                   Continuar manualmente
                 </button>

@@ -377,6 +377,15 @@ const upload = multer({
   },
 })
 
+const pdfUpload = multer({
+  storage,
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['application/pdf']
+    cb(null, allowed.includes(file.mimetype))
+  },
+})
+
 app.post('/api/upload-file', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Archivo requerido o formato no válido' })
 
@@ -405,6 +414,40 @@ app.post('/api/upload-file', upload.single('file'), async (req, res) => {
   } catch (error) {
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Error al subir archivo',
+    })
+  }
+})
+
+app.post('/api/upload-pdf', pdfUpload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'PDF requerido' })
+
+  try {
+    const fileName = `budget-pdfs/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.pdf`
+    const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || ''
+
+    const uploadRes = await fetch(`https://api-reforma.bycram.dev/storage/v1/object/budget-pdfs/${fileName}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${supabaseKey}`,
+        'apikey': supabaseKey,
+        'Content-Type': 'application/pdf',
+        'x-upsert': 'true',
+      },
+      body: req.file.buffer,
+    })
+
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text()
+      throw new Error(errText || `HTTP ${uploadRes.status}`)
+    }
+
+    res.json({
+      url: `https://api-reforma.bycram.dev/storage/v1/object/public/budget-pdfs/${fileName}`,
+      size: req.file.size,
+    })
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Error al subir PDF',
     })
   }
 })

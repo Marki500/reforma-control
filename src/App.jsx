@@ -6,6 +6,7 @@ import Materials from './pages/Materials'
 import FloorPlan from './pages/FloorPlan'
 import Notes from './pages/Notes'
 import Inspirations from './pages/Inspirations'
+import BudgetPDFs from './pages/BudgetPDFs'
 import Settings from './pages/Settings'
 import AppLayout from './components/layout/AppLayout'
 
@@ -64,6 +65,7 @@ export default function App() {
         <Route path="planos" element={<FloorPlan />} />
         <Route path="notas" element={<Notes />} />
         <Route path="inspiracion" element={<Inspirations />} />
+        <Route path="presupuestos" element={<BudgetPDFs />} />
         <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>

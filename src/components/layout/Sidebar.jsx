@@ -17,7 +17,7 @@ const links = [
   { to: '/materials', label: 'Materiales', icon: Package },
   { to: '/planos', label: 'Planos', icon: FloorPlanIcon },
   { to: '/notas', label: 'Notas', icon: StickyNote },
-  { to: '/presupuestos', label: 'Presupuestos', icon: Receipt, disabled: true },
+  { to: '/presupuestos', label: 'Presupuestos', icon: FileText },
   { to: '/facturas', label: 'Facturas', icon: FileText, disabled: true },
   { to: '/proveedores', label: 'Proveedores', icon: Users, disabled: true },
   { to: '/tareas', label: 'Tareas', icon: CheckSquare, disabled: true },

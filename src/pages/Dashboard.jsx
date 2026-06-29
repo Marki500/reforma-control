@@ -2,7 +2,17 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../services/supabaseClient'
 import { formatCurrency } from '../utils/formatCurrency'
-import { getCategoryBudgets, upsertCategoryBudget } from '../services/materialsService'
+import {
+  getCategoryBudgets,
+  upsertCategoryBudget,
+  getDashboardGridConfig,
+  getDashboardGridCells,
+  saveDashboardGridCells,
+  upsertDashboardGridConfig,
+} from '../services/materialsService'
+import { getBudgetPDFsByCategory, uploadPDF, createBudgetPDF } from '../services/budgetPDFService'
+import BudgetGridConfig from '../components/dashboard/BudgetGridConfig'
+import BudgetPDFViewer from '../components/budget/BudgetPDFViewer'
 import {
   Package,
   Heart,
@@ -16,6 +26,10 @@ import {
   ExternalLink,
   Pencil,
   StickyNote,
+  LayoutGrid,
+  Settings2,
+  FileText,
+  Upload,
 } from 'lucide-react'
 
 export default function Dashboard() {
@@ -36,6 +50,12 @@ export default function Dashboard() {
   const [budgetInput, setBudgetInput] = useState('')
   const [expandedCats, setExpandedCats] = useState({})
   const [resumenNotes, setResumenNotes] = useState([])
+  const [gridOpen, setGridOpen] = useState(false)
+  const [gridConfig, setGridConfig] = useState({ num_columns: 3, num_rows: 2 })
+  const [gridCells, setGridCells] = useState([])
+  const [categoryPDFs, setCategoryPDFs] = useState({})
+  const [viewerPdf, setViewerPdf] = useState(null)
+  const [uploadingCat, setUploadingCat] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const loadDashboard = async () => {
@@ -100,6 +120,22 @@ export default function Dashboard() {
         .eq('category', 'Resumen')
         .order('created_at', { ascending: false })
       setResumenNotes(notes || [])
+
+      // Load grid config
+      const config = await getDashboardGridConfig()
+      if (config?.num_columns) setGridConfig(config)
+      const cells = await getDashboardGridCells()
+      setGridCells(cells)
+
+      // Load PDFs per category
+      const pdfMap = {}
+      for (const cell of cells) {
+        if (cell.category_id) {
+          const pdfs = await getBudgetPDFsByCategory(cell.category_id)
+          if (pdfs.length > 0) pdfMap[cell.category_id] = pdfs
+        }
+      }
+      setCategoryPDFs(pdfMap)
     } catch (err) {
       console.error('Error loading dashboard:', err)
     } finally {
@@ -118,6 +154,39 @@ export default function Dashboard() {
       setEditingBudget(null)
     } catch (err) {
       console.error('Error saving budget:', err)
+    }
+  }
+
+  async function handleSaveGrid({ numColumns, numRows, cells }) {
+    try {
+      await upsertDashboardGridConfig(numColumns, numRows)
+      await saveDashboardGridCells(cells)
+      setGridConfig({ num_columns: numColumns, num_rows: numRows })
+      const updated = await getDashboardGridCells()
+      setGridCells(updated)
+    } catch (err) {
+      console.error('Error saving grid:', err)
+    }
+  }
+
+  async function handlePDFUpload(categoryId, file) {
+    if (!file) return
+    setUploadingCat(categoryId)
+    try {
+      const result = await uploadPDF(file)
+      const name = file.name.replace(/\.pdf$/i, '')
+      await createBudgetPDF({
+        name,
+        category_id: categoryId,
+        file_url: result.url,
+        file_size: result.size,
+      })
+      const pdfs = await getBudgetPDFsByCategory(categoryId)
+      setCategoryPDFs((prev) => ({ ...prev, [categoryId]: pdfs }))
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setUploadingCat(null)
     }
   }
 
@@ -226,6 +295,185 @@ export default function Dashboard() {
             </div>
           )
         })}
+      </div>
+
+      {/* Grid de presupuesto visual */}
+      <div className="rounded-2xl bg-white p-6 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-stone-800">
+            <LayoutGrid size={18} className="text-olive" />
+            Presupuesto por categorías
+          </h2>
+          <button
+            onClick={() => setGridOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-stone-200 px-3 py-2 text-xs font-medium text-stone-600 transition-all hover:bg-stone-50 hover:text-stone-800"
+          >
+            <Settings2 size={14} />
+            Configurar
+          </button>
+        </div>
+
+        {gridCells.filter((c) => c.category_id).length === 0 ? (
+          <div className="rounded-xl bg-stone-50 px-6 py-10 text-center">
+            <LayoutGrid size={32} className="mx-auto mb-3 text-stone-300" />
+            <p className="text-sm text-stone-500">
+              Aún no has configurado el grid de presupuesto
+            </p>
+            <button
+              onClick={() => setGridOpen(true)}
+              className="mt-3 text-sm font-medium text-stone-700 hover:underline"
+            >
+              Configurar ahora
+            </button>
+          </div>
+        ) : (
+          <div
+            className="grid gap-4"
+            style={{
+              gridTemplateColumns: `repeat(${gridConfig.num_columns || 3}, 1fr)`,
+            }}
+          >
+            {Array.from({ length: gridConfig.num_rows || 2 }).map((_, r) =>
+              Array.from({ length: gridConfig.num_columns || 3 }).map((_, c) => {
+                const cell = gridCells.find(
+                  (cl) => cl.row_index === r && cl.col_index === c
+                )
+                if (!cell || !cell.category_id) return null
+
+                const catSpending = categorySpending.find(
+                  (cs) => cs.id === cell.category_id
+                )
+                const spent = catSpending?.spent || 0
+                const budget = Number(cell.budget_amount) || 0
+                const hasBudget = budget > 0
+                const remaining = budget - spent
+                const pct = hasBudget
+                  ? Math.min((spent / budget) * 100, 100)
+                  : 0
+
+                return (
+                  <div
+                    key={`${r}-${c}`}
+                    className="flex flex-col rounded-xl border border-stone-100 p-4"
+                  >
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className="text-sm font-semibold text-stone-800">
+                        {cell.material_categories?.name || 'Categoría'}
+                      </span>
+                    </div>
+
+                    <div className="mt-auto space-y-2">
+                      <div className="flex items-baseline justify-between text-xs text-stone-500">
+                        <span>Gastado</span>
+                        <span className="font-medium text-stone-700">
+                          {formatCurrency(spent)}
+                        </span>
+                      </div>
+
+                      {hasBudget && (
+                        <>
+                          <div className="flex items-baseline justify-between text-xs text-stone-500">
+                            <span>Presupuesto</span>
+                            <span className="font-medium text-stone-700">
+                              {formatCurrency(budget)}
+                            </span>
+                          </div>
+
+                          <div className="h-2 w-full overflow-hidden rounded-full bg-stone-100">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                pct >= 100
+                                  ? 'bg-red-400'
+                                  : pct >= 80
+                                    ? 'bg-gold'
+                                    : 'bg-olive'
+                              }`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+
+                          <div className="flex items-baseline justify-between text-xs">
+                            <span
+                              className={
+                                remaining < 0 ? 'font-medium text-red-500' : 'text-stone-500'
+                              }
+                            >
+                              {remaining < 0
+                                ? `Excedido en ${formatCurrency(Math.abs(remaining))}`
+                                : `Restan ${formatCurrency(remaining)}`}
+                            </span>
+                          </div>
+                        </>
+                      )}
+
+                      {!hasBudget && (
+                        <button
+                          onClick={() => setGridOpen(true)}
+                          className="w-full rounded-lg border border-dashed border-stone-300 py-2 text-xs text-stone-400 transition-colors hover:border-stone-400 hover:text-stone-600"
+                        >
+                          + Asignar presupuesto
+                        </button>
+                      )}
+
+                      {/* PDFs adjuntos */}
+                      {categoryPDFs[cell.category_id]?.length > 0 && (
+                        <div className="space-y-1">
+                          {categoryPDFs[cell.category_id].map((pdf) => (
+                            <button
+                              key={pdf.id}
+                              onClick={() => setViewerPdf(pdf)}
+                              className="flex w-full items-center gap-2 rounded-lg border border-stone-100 px-2.5 py-1.5 text-xs text-stone-600 transition-colors hover:bg-stone-50 hover:text-stone-800"
+                            >
+                              <FileText size={12} className="flex-shrink-0 text-terracotta" />
+                              <span className="truncate">{pdf.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Upload PDF */}
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept="application/pdf"
+                          id={`pdf-upload-${cell.category_id}`}
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) {
+                              handlePDFUpload(cell.category_id, file)
+                              e.target.value = ''
+                            }
+                          }}
+                        />
+                        <label
+                          htmlFor={`pdf-upload-${cell.category_id}`}
+                          className={`flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed py-1.5 text-xs transition-colors ${
+                            uploadingCat === cell.category_id
+                              ? 'border-stone-200 text-stone-300'
+                              : 'border-stone-200 text-stone-400 hover:border-stone-400 hover:text-stone-600'
+                          }`}
+                        >
+                          {uploadingCat === cell.category_id ? (
+                            <>
+                              <div className="h-3 w-3 animate-spin rounded-full border-2 border-stone-300 border-t-stone-600" />
+                              Subiendo...
+                            </>
+                          ) : (
+                            <>
+                              <Upload size={10} />
+                              Adjuntar presupuesto PDF
+                            </>
+                          )}
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )}
       </div>
 
       {/* Partidas por categoría */}
@@ -400,6 +648,17 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      <BudgetGridConfig
+        open={gridOpen}
+        onClose={() => setGridOpen(false)}
+        columns={gridConfig.num_columns || 3}
+        rows={gridConfig.num_rows || 2}
+        cells={gridCells}
+        onSave={handleSaveGrid}
+      />
+
+      <BudgetPDFViewer pdf={viewerPdf} onClose={() => setViewerPdf(null)} />
     </div>
   )
 }

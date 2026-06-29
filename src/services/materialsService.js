@@ -160,6 +160,86 @@ export async function toggleCountInTotal(id, value) {
   return data
 }
 
+export async function getDashboardGridConfig() {
+  const { data: user } = await supabase.auth.getUser()
+  if (!user?.user) return null
+
+  const { data, error } = await supabase
+    .from('dashboard_grid_config')
+    .select('*')
+    .eq('user_id', user.user.id)
+    .maybeSingle()
+
+  if (error) throw error
+  return data || { num_columns: 3, num_rows: 2 }
+}
+
+export async function upsertDashboardGridConfig(numColumns, numRows) {
+  const { data: user } = await supabase.auth.getUser()
+  if (!user?.user) throw new Error('Not authenticated')
+
+  const { data, error } = await supabase
+    .from('dashboard_grid_config')
+    .upsert(
+      { user_id: user.user.id, num_columns: numColumns, num_rows: numRows },
+      { onConflict: 'user_id' }
+    )
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function getDashboardGridCells() {
+  const { data: user } = await supabase.auth.getUser()
+  if (!user?.user) return []
+
+  const { data, error } = await supabase
+    .from('dashboard_grid_cells')
+    .select('*, material_categories(name)')
+    .eq('user_id', user.user.id)
+    .order('row_index')
+    .order('col_index')
+
+  if (error) throw error
+  return data || []
+}
+
+export async function saveDashboardGridCells(cells) {
+  const { data: user } = await supabase.auth.getUser()
+  if (!user?.user) throw new Error('Not authenticated')
+
+  const userId = user.user.id
+  const payload = cells.map((c) => ({
+    user_id: userId,
+    category_id: c.category_id || null,
+    budget_amount: c.budget_amount || 0,
+    row_index: c.row_index,
+    col_index: c.col_index,
+  }))
+
+  const { data, error } = await supabase
+    .from('dashboard_grid_cells')
+    .upsert(payload, { onConflict: 'user_id,row_index,col_index' })
+    .select()
+
+  if (error) throw error
+  return data
+}
+
+export async function deleteDashboardGridCells() {
+  const { data: user } = await supabase.auth.getUser()
+  if (!user?.user) throw new Error('Not authenticated')
+
+  const { error } = await supabase
+    .from('dashboard_grid_cells')
+    .delete()
+    .eq('user_id', user.user.id)
+
+  if (error) throw error
+}
+
 export async function upsertCategoryBudget(categoryId, budgetAmount) {
   const { data: user } = await supabase.auth.getUser()
   if (!user?.user) throw new Error('Not authenticated')

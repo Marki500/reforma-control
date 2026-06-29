@@ -15,11 +15,31 @@ export default function BudgetGridConfig({
   const [gridCells, setGridCells] = useState(cells)
   const [categories, setCategories] = useState([])
 
+  function buildCells(numCols, numRows, existing) {
+    const result = []
+    for (let r = 0; r < numRows; r++) {
+      for (let c = 0; c < numCols; c++) {
+        const found = existing.find(
+          (cell) => cell.row_index === r && cell.col_index === c
+        )
+        result.push(
+          found || {
+            row_index: r,
+            col_index: c,
+            category_id: '',
+            budget_amount: 0,
+          }
+        )
+      }
+    }
+    return result
+  }
+
   useEffect(() => {
     if (open) {
       setNumCols(columns)
       setNumRows(rows)
-      setGridCells(cells)
+      setGridCells(buildCells(columns, rows, cells))
       getCategories()
         .then((cats) => setCategories(cats))
         .catch(() => {})
@@ -32,35 +52,26 @@ export default function BudgetGridConfig({
     setNumCols(clampedCols)
     setNumRows(clampedRows)
 
-    setGridCells((prev) => {
-      const next = []
-      for (let r = 0; r < clampedRows; r++) {
-        for (let c = 0; c < clampedCols; c++) {
-          const existing = prev.find(
-            (cell) => cell.row_index === r && cell.col_index === c
-          )
-          next.push(
-            existing || {
-              row_index: r,
-              col_index: c,
-              category_id: '',
-              budget_amount: 0,
-            }
-          )
-        }
-      }
-      return next
-    })
+    setGridCells((prev) => buildCells(clampedCols, clampedRows, prev))
   }
 
   function updateCell(row, col, key, value) {
-    setGridCells((prev) =>
-      prev.map((cell) =>
-        cell.row_index === row && cell.col_index === col
-          ? { ...cell, [key]: value }
-          : cell
+    setGridCells((prev) => {
+      const exists = prev.some(
+        (cell) => cell.row_index === row && cell.col_index === col
       )
-    )
+      if (exists) {
+        return prev.map((cell) =>
+          cell.row_index === row && cell.col_index === col
+            ? { ...cell, [key]: value }
+            : cell
+        )
+      }
+      return [
+        ...prev,
+        { row_index: row, col_index: col, [key]: value, budget_amount: 0 },
+      ]
+    })
   }
 
   function handleSave() {

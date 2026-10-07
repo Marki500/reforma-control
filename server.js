@@ -17,6 +17,29 @@ const app = express()
 app.use(cors())
 app.use(express.json())
 
+
+const supabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://api-reforma.noxumlab.com').replace(/\/$/, '')
+const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+
+async function requireUploadSession(req, res, next) {
+  const authorization = req.get('Authorization')
+  if (!authorization?.startsWith('Bearer ')) return res.status(401).json({ error: 'Inicia sesión para subir archivos.' })
+  if (!supabaseKey) return res.status(503).json({ error: 'Falta configurar la clave pública de Supabase en el servidor.' })
+  try {
+    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: { Authorization: authorization, apikey: supabaseKey },
+      signal: AbortSignal.timeout(15000),
+    })
+    if (!response.ok) return res.status(response.status === 401 || response.status === 403 ? 401 : 502).json({ error: 'No se pudo validar la sesión. Inicia sesión de nuevo o inténtalo más tarde.' })
+    const user = await response.json()
+    if (!user.id) return res.status(401).json({ error: 'Sesión no válida.' })
+    req.uploadAuthorization = authorization
+    next()
+  } catch {
+    res.status(502).json({ error: 'No se pudo conectar con Supabase. Comprueba la configuración del servidor.' })
+  }
+}
+
 // Health check for Coolify / load balancers
 app.get('/api/health', (_req, res) => {
   res.status(200).json({ status: 'ok' })
@@ -316,7 +339,7 @@ app.post('/api/extract-inspiration', async (req, res) => {
   }
 })
 
-app.post('/api/upload-image', async (req, res) => {
+app.post('/api/upload-image', requireUploadSession, async (req, res) => {
   const { url } = req.body
   if (!url) return res.status(400).json({ error: 'URL requerida' })
 
@@ -337,13 +360,12 @@ app.post('/api/upload-image', async (req, res) => {
     }
 
     const fileName = `inspirations/${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`
-    const storageUrl = `https://api-reforma.bycram.dev/storage/v1/object/images/${fileName}`
-    const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || ''
+    const storageUrl = `${supabaseUrl}/storage/v1/object/images/${fileName}`
 
     const uploadRes = await fetch(storageUrl, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${supabaseKey}`,
+        'Authorization': req.uploadAuthorization,
         'apikey': supabaseKey,
         'Content-Type': contentType,
         'x-upsert': 'true',
@@ -356,7 +378,7 @@ app.post('/api/upload-image', async (req, res) => {
       throw new Error(errText || `HTTP ${uploadRes.status}`)
     }
 
-    const publicUrl = `https://api-reforma.bycram.dev/storage/v1/object/public/images/${fileName}`
+    const publicUrl = `${supabaseUrl}/storage/v1/object/public/images/${fileName}`
 
     res.json({ url: publicUrl })
   } catch (error) {
@@ -386,18 +408,17 @@ const pdfUpload = multer({
   },
 })
 
-app.post('/api/upload-file', upload.single('file'), async (req, res) => {
+app.post('/api/upload-file', requireUploadSession, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Archivo requerido o formato no válido' })
 
   try {
     const ext = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/avif': '.avif' }[req.file.mimetype] || '.jpg'
     const fileName = `inspirations/${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`
-    const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || ''
 
-    const uploadRes = await fetch(`https://api-reforma.bycram.dev/storage/v1/object/images/${fileName}`, {
+    const uploadRes = await fetch(`${supabaseUrl}/storage/v1/object/images/${fileName}`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${supabaseKey}`,
+        'Authorization': req.uploadAuthorization,
         'apikey': supabaseKey,
         'Content-Type': req.file.mimetype,
         'x-upsert': 'true',
@@ -410,7 +431,7 @@ app.post('/api/upload-file', upload.single('file'), async (req, res) => {
       throw new Error(errText || `HTTP ${uploadRes.status}`)
     }
 
-    res.json({ url: `https://api-reforma.bycram.dev/storage/v1/object/public/images/${fileName}` })
+    res.json({ url: `${supabaseUrl}/storage/v1/object/public/images/${fileName}` })
   } catch (error) {
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Error al subir archivo',
@@ -418,17 +439,16 @@ app.post('/api/upload-file', upload.single('file'), async (req, res) => {
   }
 })
 
-app.post('/api/upload-pdf', pdfUpload.single('file'), async (req, res) => {
+app.post('/api/upload-pdf', requireUploadSession, pdfUpload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'PDF requerido' })
 
   try {
     const fileName = `budget-pdfs/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.pdf`
-    const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || ''
 
-    const uploadRes = await fetch(`https://api-reforma.bycram.dev/storage/v1/object/budget-pdfs/${fileName}`, {
+    const uploadRes = await fetch(`${supabaseUrl}/storage/v1/object/budget-pdfs/${fileName}`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${supabaseKey}`,
+        'Authorization': req.uploadAuthorization,
         'apikey': supabaseKey,
         'Content-Type': 'application/pdf',
         'x-upsert': 'true',
@@ -442,7 +462,7 @@ app.post('/api/upload-pdf', pdfUpload.single('file'), async (req, res) => {
     }
 
     res.json({
-      url: `https://api-reforma.bycram.dev/storage/v1/object/public/budget-pdfs/${fileName}`,
+      url: `${supabaseUrl}/storage/v1/object/public/budget-pdfs/${fileName}`,
       size: req.file.size,
     })
   } catch (error) {
@@ -456,6 +476,12 @@ app.post('/api/upload-pdf', pdfUpload.single('file'), async (req, res) => {
 app.use('/uploads', express.static(uploadsDir))
 
 // Serve built frontend in production
+app.use((error, _req, res, next) => {
+  if (!error) return next()
+  const tooLarge = error.code === 'LIMIT_FILE_SIZE'
+  res.status(tooLarge ? 413 : 400).json({ error: tooLarge ? 'El archivo supera el tamaño permitido.' : 'No se pudo procesar el archivo.' })
+})
+
 const distPath = path.join(__dirname, 'dist')
 app.use(express.static(distPath))
 app.get('/{*path}', (_req, res) => {

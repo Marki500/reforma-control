@@ -1,3 +1,5 @@
+import { authenticatedUpload } from './uploadService'
+import { normalizeStorageRecord } from '../utils/storageUrl'
 import { supabase } from './supabaseClient'
 
 export async function getBudgetPDFs() {
@@ -11,7 +13,7 @@ export async function getBudgetPDFs() {
     .order('created_at', { ascending: false })
 
   if (error) throw error
-  return data || []
+  return (data || []).map(normalizeStorageRecord)
 }
 
 export async function getBudgetPDFsByCategory(categoryId) {
@@ -26,7 +28,7 @@ export async function getBudgetPDFsByCategory(categoryId) {
     .order('created_at', { ascending: false })
 
   if (error) throw error
-  return data || []
+  return (data || []).map(normalizeStorageRecord)
 }
 
 export async function createBudgetPDF(pdf) {
@@ -40,7 +42,7 @@ export async function createBudgetPDF(pdf) {
     .single()
 
   if (error) throw error
-  return data
+  return normalizeStorageRecord(data)
 }
 
 export async function deleteBudgetPDF(id) {
@@ -55,16 +57,5 @@ export async function deleteBudgetPDF(id) {
 export async function uploadPDF(file) {
   const formData = new FormData()
   formData.append('file', file)
-
-  const response = await fetch('/api/upload-pdf', {
-    method: 'POST',
-    body: formData,
-  })
-
-  if (!response.ok) {
-    const err = await response.json()
-    throw new Error(err.error || 'Error al subir PDF')
-  }
-
-  return response.json()
+  return authenticatedUpload('/api/upload-pdf', formData)
 }

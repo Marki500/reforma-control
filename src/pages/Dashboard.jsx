@@ -1,3 +1,4 @@
+import { normalizeStorageRecord } from '../utils/storageUrl'
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../services/supabaseClient'
@@ -33,6 +34,7 @@ import {
 } from 'lucide-react'
 
 export default function Dashboard() {
+  const [operationError, setOperationError] = useState('')
   const navigate = useNavigate()
   const [stats, setStats] = useState({
     total: 0,
@@ -70,7 +72,7 @@ export default function Dashboard() {
 
       if (error) throw error
 
-      const list = materials || []
+      const list = (materials || []).map(normalizeStorageRecord)
       const counted = list.filter((m) => m.count_in_total !== false)
       setStats({
         total: list.length,
@@ -171,6 +173,7 @@ export default function Dashboard() {
 
   async function handlePDFUpload(categoryId, file) {
     if (!file) return
+    setOperationError('')
     setUploadingCat(categoryId)
     try {
       const result = await uploadPDF(file)
@@ -184,6 +187,7 @@ export default function Dashboard() {
       const pdfs = await getBudgetPDFsByCategory(categoryId)
       setCategoryPDFs((prev) => ({ ...prev, [categoryId]: pdfs }))
     } catch (err) {
+      setOperationError(err.message || 'No se pudo completar la operación.')
       console.error(err)
     } finally {
       setUploadingCat(null)
@@ -209,6 +213,7 @@ export default function Dashboard() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
+      {operationError && <div role="alert" className="fixed bottom-4 left-4 right-4 z-[100] rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 shadow-lg">{operationError}<button type="button" onClick={() => setOperationError('')} className="ml-3 font-semibold underline">Cerrar</button></div>}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

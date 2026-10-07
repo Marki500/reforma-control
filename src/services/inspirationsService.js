@@ -1,3 +1,5 @@
+import { authenticatedUpload } from './uploadService'
+import { normalizeStorageRecord } from '../utils/storageUrl'
 import { supabase } from './supabaseClient'
 
 export async function getInspirations() {
@@ -12,7 +14,7 @@ export async function getInspirations() {
     .order('created_at', { ascending: false })
 
   if (error) throw error
-  return data || []
+  return (data || []).map(normalizeStorageRecord)
 }
 
 export async function createInspiration(inspiration) {
@@ -26,7 +28,7 @@ export async function createInspiration(inspiration) {
     .single()
 
   if (error) throw error
-  return data
+  return normalizeStorageRecord(data)
 }
 
 export async function updateInspiration(id, updates) {
@@ -38,7 +40,7 @@ export async function updateInspiration(id, updates) {
     .single()
 
   if (error) throw error
-  return data
+  return normalizeStorageRecord(data)
 }
 
 export async function deleteInspiration(id) {
@@ -79,33 +81,11 @@ export async function extractFromUrl(url) {
 }
 
 export async function uploadImageFromUrl(url) {
-  const response = await fetch('/api/upload-image', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url, folder: 'inspirations' }),
-  })
-
-  if (!response.ok) {
-    const err = await response.json()
-    throw new Error(err.error || 'Error al subir imagen')
-  }
-
-  return response.json()
+  return authenticatedUpload('/api/upload-image', JSON.stringify({ url }), { 'Content-Type': 'application/json' })
 }
 
 export async function uploadFile(file) {
   const formData = new FormData()
   formData.append('file', file)
-
-  const response = await fetch('/api/upload-file', {
-    method: 'POST',
-    body: formData,
-  })
-
-  if (!response.ok) {
-    const err = await response.json()
-    throw new Error(err.error || 'Error al subir archivo')
-  }
-
-  return response.json()
+  return authenticatedUpload('/api/upload-file', formData)
 }

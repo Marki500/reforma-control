@@ -1,3 +1,4 @@
+import { normalizeStorageRecord } from '../utils/storageUrl'
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams, useOutletContext } from 'react-router-dom'
 import { supabase } from '../services/supabaseClient'
@@ -27,6 +28,7 @@ import {
 } from 'lucide-react'
 
 export default function Materials() {
+  const [operationError, setOperationError] = useState('')
   const [searchParams, setSearchParams] = useSearchParams()
   const { searchQuery } = useOutletContext()
 
@@ -61,7 +63,8 @@ export default function Materials() {
         getRooms(),
       ])
 
-      setMaterials(materialsData.data || [])
+      if (materialsData.error) throw materialsData.error
+      setMaterials((materialsData.data || []).map(normalizeStorageRecord))
       setCategories(categoriesData || [])
       setRooms(roomsData || [])
     } catch (err) {
@@ -119,6 +122,7 @@ export default function Materials() {
   )
 
   async function handleSave(formData, imageFile) {
+    setOperationError('')
     setSaving(true)
     try {
       const { data: userData } = await supabase.auth.getUser()
@@ -148,6 +152,7 @@ export default function Materials() {
       setEditingMaterial(null)
       await loadData()
     } catch (err) {
+      setOperationError(err.message || 'No se pudo guardar el material.')
       console.error('Error saving material:', err)
     } finally {
       setSaving(false)
@@ -215,6 +220,7 @@ export default function Materials() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
+      {operationError && <div role="alert" className="fixed bottom-4 left-4 right-4 z-[100] rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 shadow-lg">{operationError}<button type="button" onClick={() => setOperationError('')} className="ml-3 font-semibold underline">Cerrar</button></div>}
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>

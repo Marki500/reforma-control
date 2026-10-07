@@ -19,6 +19,7 @@ import { getCategories } from '../services/materialsService'
 import BudgetPDFViewer from '../components/budget/BudgetPDFViewer'
 
 export default function BudgetPDFs() {
+  const [operationError, setOperationError] = useState('')
   const navigate = useNavigate()
   const [pdfs, setPdfs] = useState([])
   const [categories, setCategories] = useState([])
@@ -38,6 +39,7 @@ export default function BudgetPDFs() {
       setPdfs(pdfsData)
       setCategories(cats)
     } catch (err) {
+      setOperationError(err.message || 'No se pudo completar la operación.')
       console.error(err)
     } finally {
       setLoading(false)
@@ -48,6 +50,7 @@ export default function BudgetPDFs() {
 
   async function handleUpload(file) {
     if (!file) return
+    setOperationError('')
     setUploading(true)
     try {
       const result = await uploadPDF(file)
@@ -60,6 +63,7 @@ export default function BudgetPDFs() {
       await load()
       setUploadOpen(false)
     } catch (err) {
+      setOperationError(err.message || 'No se pudo completar la operación.')
       console.error(err)
     } finally {
       setUploading(false)
@@ -72,6 +76,7 @@ export default function BudgetPDFs() {
       await deleteBudgetPDF(id)
       setPdfs((prev) => prev.filter((p) => p.id !== id))
     } catch (err) {
+      setOperationError(err.message || 'No se pudo completar la operación.')
       console.error(err)
     }
   }
@@ -90,6 +95,7 @@ export default function BudgetPDFs() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
+      {operationError && <div role="alert" className="fixed bottom-4 left-4 right-4 z-[100] rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 shadow-lg">{operationError}<button type="button" onClick={() => setOperationError('')} className="ml-3 font-semibold underline">Cerrar</button></div>}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-stone-800">

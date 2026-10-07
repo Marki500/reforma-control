@@ -1,3 +1,5 @@
+import { authenticatedUpload } from './uploadService'
+import { normalizeStorageRecord } from '../utils/storageUrl'
 import { supabase } from './supabaseClient'
 
 export async function getFloorPlans() {
@@ -6,7 +8,7 @@ export async function getFloorPlans() {
     .select('id, name, image_url, created_at, updated_at')
     .order('updated_at', { ascending: false })
   if (error) throw error
-  return data || []
+  return (data || []).map(normalizeStorageRecord)
 }
 
 export async function getFloorPlan(id) {
@@ -16,7 +18,7 @@ export async function getFloorPlan(id) {
     .eq('id', id)
     .single()
   if (error) throw error
-  return data
+  return normalizeStorageRecord(data)
 }
 
 export async function createFloorPlan({ name, image_url }) {
@@ -32,7 +34,7 @@ export async function createFloorPlan({ name, image_url }) {
     .select()
     .single()
   if (error) throw error
-  return data
+  return normalizeStorageRecord(data)
 }
 
 export async function updateFloorPlan(id, updates) {
@@ -43,7 +45,7 @@ export async function updateFloorPlan(id, updates) {
     .select()
     .single()
   if (error) throw error
-  return data
+  return normalizeStorageRecord(data)
 }
 
 export async function deleteFloorPlan(id) {
@@ -57,13 +59,5 @@ export async function deleteFloorPlan(id) {
 export async function uploadFile(file) {
   const formData = new FormData()
   formData.append('file', file)
-  const response = await fetch('/api/upload-file', {
-    method: 'POST',
-    body: formData,
-  })
-  if (!response.ok) {
-    const err = await response.json()
-    throw new Error(err.error || 'Error al subir archivo')
-  }
-  return response.json()
+  return authenticatedUpload('/api/upload-file', formData)
 }

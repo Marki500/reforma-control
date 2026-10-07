@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 
 export default function FloorPlan() {
+  const [operationError, setOperationError] = useState('')
   const [plans, setPlans] = useState([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -32,6 +33,7 @@ export default function FloorPlan() {
       const data = await getFloorPlans()
       setPlans(data)
     } catch (err) {
+      setOperationError(err.message || 'No se pudo completar la operación.')
       console.error(err)
     } finally {
       setLoading(false)
@@ -42,6 +44,7 @@ export default function FloorPlan() {
 
   async function handleUpload(file) {
     if (!file) return
+    setOperationError('')
     setUploading(true)
     try {
       const result = await uploadFile(file)
@@ -50,6 +53,7 @@ export default function FloorPlan() {
       await loadPlans()
       setModalOpen(false)
     } catch (err) {
+      setOperationError(err.message || 'No se pudo completar la operación.')
       console.error(err)
     } finally {
       setUploading(false)
@@ -67,12 +71,14 @@ export default function FloorPlan() {
       setConfirmDelete(null)
       await loadPlans()
     } catch (err) {
+      setOperationError(err.message || 'No se pudo completar la operación.')
       console.error(err)
     }
   }
 
   return (
     <div className="mx-auto max-w-6xl">
+      {operationError && <div role="alert" className="fixed bottom-4 left-4 right-4 z-[100] rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 shadow-lg">{operationError}<button type="button" onClick={() => setOperationError('')} className="ml-3 font-semibold underline">Cerrar</button></div>}
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-stone-800">Planos</h1>

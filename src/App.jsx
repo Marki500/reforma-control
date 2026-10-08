@@ -12,6 +12,7 @@ import Tasks from './pages/Tasks'
 import Expenses from './pages/Expenses'
 import Suppliers from './pages/Suppliers'
 import Calendar from './pages/Calendar'
+import ProgressPhotos from './pages/ProgressPhotos'
 import AppLayout from './components/layout/AppLayout'
 
 function ProtectedRoute({ children }) {
@@ -75,6 +76,7 @@ export default function App() {
         <Route path="gastos" element={<Expenses />} />
         <Route path="proveedores" element={<Suppliers />} />
         <Route path="calendario" element={<Calendar />} />
+        <Route path="progreso" element={<ProgressPhotos />} />
       </Route>
     </Routes>
   )

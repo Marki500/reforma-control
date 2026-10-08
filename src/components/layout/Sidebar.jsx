@@ -11,6 +11,7 @@ import {
   StickyNote,
   Settings,
   CalendarDays,
+  Camera,
 } from 'lucide-react'
 
 const links = [
@@ -23,6 +24,7 @@ const links = [
   { to: '/proveedores', label: 'Proveedores', icon: Users },
   { to: '/tareas', label: 'Tareas', icon: CheckSquare },
   { to: '/calendario', label: 'Calendario', icon: CalendarDays },
+  { to: '/progreso', label: 'Progreso', icon: Camera },
   { to: '/inspiracion', label: 'Inspiración', icon: Lightbulb },
 ]
 

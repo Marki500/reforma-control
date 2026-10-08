@@ -37,3 +37,9 @@ Después sube el código a GitHub y haz redeploy en Coolify. Comprueba crear un 
 Después de aplicar `00014_expenses.sql`, ejecuta únicamente `supabase/migrations/00015_suppliers.sql` en Supabase Studio > SQL Editor. Crea los proveedores, añade su relación opcional con los gastos y actualiza las políticas de gastos para impedir asociar proveedores de otro usuario.
 
 Tras el redeploy, crea un proveedor, edítalo y selecciónalo en un gasto. Al eliminar un proveedor, el gasto permanece y conserva el nombre que figuraba en la factura.
+
+## Activar Fotos de progreso
+
+Ejecuta únicamente `supabase/migrations/00016_progress_photos.sql` en Supabase Studio > SQL Editor. La migración crea el diario fotográfico y sus políticas por usuario; reutiliza el bucket `images` que ya existe, por lo que no crea otro almacenamiento.
+
+Tras el redeploy, añade una imagen ficticia, edita su fase y estancia, comprueba los filtros y elimínala. Al eliminarla desde Progreso también se elimina el objeto correspondiente del bucket `images`.

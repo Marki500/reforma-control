@@ -8,6 +8,7 @@ import Notes from './pages/Notes'
 import Inspirations from './pages/Inspirations'
 import BudgetPDFs from './pages/BudgetPDFs'
 import Settings from './pages/Settings'
+import Tasks from './pages/Tasks'
 import AppLayout from './components/layout/AppLayout'
 
 function ProtectedRoute({ children }) {
@@ -67,6 +68,7 @@ export default function App() {
         <Route path="inspiracion" element={<Inspirations />} />
         <Route path="presupuestos" element={<BudgetPDFs />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="tareas" element={<Tasks />} />
       </Route>
     </Routes>
   )

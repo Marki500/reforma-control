@@ -20,7 +20,7 @@ const links = [
   { to: '/presupuestos', label: 'Presupuestos', icon: FileText },
   { to: '/facturas', label: 'Facturas', icon: FileText, disabled: true },
   { to: '/proveedores', label: 'Proveedores', icon: Users, disabled: true },
-  { to: '/tareas', label: 'Tareas', icon: CheckSquare, disabled: true },
+  { to: '/tareas', label: 'Tareas', icon: CheckSquare },
   { to: '/inspiracion', label: 'Inspiración', icon: Lightbulb },
 ]
 

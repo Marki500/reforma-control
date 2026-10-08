@@ -17,3 +17,11 @@ Los enlaces del dominio antiguo se normalizan al leer materiales, planos, imáge
 Después del despliegue, comprobar: abrir el PDF existente; subir un PDF y un plano ficticios; cargar una imagen de material; verificar que aparecen y se abren; comprobar que una subida fallida muestra un aviso. Estas pruebas requieren el VPS y su configuración real. No se ha desplegado desde esta carpeta.
 
 Validación local: `node --test tests/storage-upload.test.mjs`, `npm run build`.
+
+## Activar Tareas
+
+Antes de desplegar la versión con Tareas, abre Supabase Studio > SQL Editor y ejecuta únicamente `supabase/migrations/00013_tasks.sql`. La migración crea la tabla, sus índices y permisos por usuario dentro de una transacción. No borra tablas ni datos existentes. Ejecutarla una vez; si ya existe una tabla tasks de otra implementación, comprobar su esquema antes de aplicarla.
+
+El script antiguo `npm run migrate` no incluye esta migración y vuelve a ejecutar migraciones anteriores: no lo uses para activar Tareas.
+
+Después sube el código a GitHub y redeploy en Coolify. Comprueba crear, editar, completar, reabrir y eliminar una tarea ficticia; filtrar por estado/estancia/prioridad y verificar fechas vencidas. Las pruebas de persistencia y aislamiento entre usuarios requieren Supabase y están pendientes de ejecutar tras aplicar la migración.

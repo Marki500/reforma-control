@@ -10,6 +10,7 @@ import {
   Image as FloorPlanIcon,
   StickyNote,
   Settings,
+  CalendarDays,
 } from 'lucide-react'
 
 const links = [
@@ -21,6 +22,7 @@ const links = [
   { to: '/gastos', label: 'Gastos', icon: Receipt },
   { to: '/proveedores', label: 'Proveedores', icon: Users },
   { to: '/tareas', label: 'Tareas', icon: CheckSquare },
+  { to: '/calendario', label: 'Calendario', icon: CalendarDays },
   { to: '/inspiracion', label: 'Inspiración', icon: Lightbulb },
 ]
 

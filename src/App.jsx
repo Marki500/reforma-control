@@ -11,6 +11,7 @@ import Settings from './pages/Settings'
 import Tasks from './pages/Tasks'
 import Expenses from './pages/Expenses'
 import Suppliers from './pages/Suppliers'
+import Calendar from './pages/Calendar'
 import AppLayout from './components/layout/AppLayout'
 
 function ProtectedRoute({ children }) {
@@ -73,6 +74,7 @@ export default function App() {
         <Route path="tareas" element={<Tasks />} />
         <Route path="gastos" element={<Expenses />} />
         <Route path="proveedores" element={<Suppliers />} />
+        <Route path="calendario" element={<Calendar />} />
       </Route>
     </Routes>
   )

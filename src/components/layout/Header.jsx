@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../services/supabaseClient'
 import { Search, LogOut, Menu } from 'lucide-react'
+import NotificationsMenu from './NotificationsMenu'
 
 export default function Header({ onMenuToggle, onSearch }) {
   const navigate = useNavigate()
@@ -42,6 +43,7 @@ export default function Header({ onMenuToggle, onSearch }) {
       </div>
 
       <div className="ml-auto flex items-center gap-3">
+        <NotificationsMenu />
         <button
           onClick={handleLogout}
           className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-700"

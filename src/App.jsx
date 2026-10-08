@@ -10,6 +10,7 @@ import BudgetPDFs from './pages/BudgetPDFs'
 import Settings from './pages/Settings'
 import Tasks from './pages/Tasks'
 import Expenses from './pages/Expenses'
+import Suppliers from './pages/Suppliers'
 import AppLayout from './components/layout/AppLayout'
 
 function ProtectedRoute({ children }) {
@@ -71,6 +72,7 @@ export default function App() {
         <Route path="settings" element={<Settings />} />
         <Route path="tareas" element={<Tasks />} />
         <Route path="gastos" element={<Expenses />} />
+        <Route path="proveedores" element={<Suppliers />} />
       </Route>
     </Routes>
   )

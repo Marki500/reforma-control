@@ -31,3 +31,9 @@ Después sube el código a GitHub y redeploy en Coolify. Comprueba crear, editar
 Abre Supabase Studio > SQL Editor y ejecuta únicamente `supabase/migrations/00014_expenses.sql`. Crea la tabla de gastos, sus índices y las políticas que aíslan los datos de cada usuario. No borra ni modifica materiales, presupuestos, tareas u otros datos existentes.
 
 Después sube el código a GitHub y haz redeploy en Coolify. Comprueba crear un gasto pendiente, editarlo con un pago parcial, marcarlo como totalmente pagado indicando el mismo importe y eliminar un gasto de prueba. El estado se calcula automáticamente a partir del coste final y la cantidad pagada.
+
+## Activar Proveedores
+
+Después de aplicar `00014_expenses.sql`, ejecuta únicamente `supabase/migrations/00015_suppliers.sql` en Supabase Studio > SQL Editor. Crea los proveedores, añade su relación opcional con los gastos y actualiza las políticas de gastos para impedir asociar proveedores de otro usuario.
+
+Tras el redeploy, crea un proveedor, edítalo y selecciónalo en un gasto. Al eliminar un proveedor, el gasto permanece y conserva el nombre que figuraba en la factura.

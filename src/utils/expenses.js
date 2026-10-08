@@ -18,7 +18,7 @@ export function expenseTotals(expenses) {
 export function filterExpenses(expenses, filters) {
   const search = filters.search.trim().toLocaleLowerCase('es')
   return expenses.filter(expense => {
-    const haystack = `${expense.title} ${expense.vendor} ${expense.notes}`.toLocaleLowerCase('es')
+    const haystack = `${expense.title} ${expense.vendor} ${expense.suppliers?.name || ''} ${expense.notes}`.toLocaleLowerCase('es')
     return (!search || haystack.includes(search))
       && (!filters.status || expenseStatus(expense) === filters.status)
       && (!filters.category || expense.category === filters.category)

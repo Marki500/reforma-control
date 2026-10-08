@@ -6,12 +6,13 @@ function payloadFrom(form) {
     budgeted_amount: Number(form.budgeted_amount) || 0,
     amount: Number(form.amount) || 0, paid_amount: Number(form.paid_amount) || 0,
     expense_date: form.expense_date || null, due_date: form.due_date || null,
-    room_id: form.room_id || null, notes: form.notes.trim(), updated_at: new Date().toISOString(),
+    room_id: form.room_id || null, supplier_id: form.supplier_id || null,
+    notes: form.notes.trim(), updated_at: new Date().toISOString(),
   }
 }
 
 export async function getExpenses() {
-  const { data, error } = await supabase.from('expenses').select('*, rooms(name)').order('expense_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
+  const { data, error } = await supabase.from('expenses').select('*, rooms(name), suppliers(name)').order('expense_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
   if (error) throw error
   return data || []
 }
@@ -26,7 +27,7 @@ export async function saveExpense(id, form) {
     if (!data.user) throw new Error('Inicia sesión de nuevo.')
     query = supabase.from('expenses').insert({ ...payload, user_id: data.user.id })
   }
-  const { data, error } = await query.select('*, rooms(name)').single()
+  const { data, error } = await query.select('*, rooms(name), suppliers(name)').single()
   if (error) throw error
   return data
 }

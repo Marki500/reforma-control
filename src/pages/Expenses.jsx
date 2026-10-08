@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Plus, Pencil, Trash2, Receipt, WalletCards } from 'lucide-react'
 import { getRooms } from '../services/materialsService'
 import { deleteExpense, getExpenses, saveExpense } from '../services/expensesService'
+import { getSuppliers } from '../services/suppliersService'
 import { expenseStatus, expenseTotals, filterExpenses } from '../utils/expenses'
 import { formatCurrency } from '../utils/formatCurrency'
 import { Modal } from '../components/ui/Modal'
@@ -9,12 +10,13 @@ import { Button } from '../components/ui/Button'
 
 const categories = ['Material', 'Mano de obra', 'Transporte', 'Licencia', 'Otro']
 const statuses = ['Pendiente', 'Parcial', 'Pagado']
-const empty = { title: '', category: 'Material', vendor: '', budgeted_amount: '', amount: '', paid_amount: '', expense_date: '', due_date: '', room_id: '', notes: '' }
+const empty = { title: '', category: 'Material', vendor: '', supplier_id: '', budgeted_amount: '', amount: '', paid_amount: '', expense_date: '', due_date: '', room_id: '', notes: '' }
 const fieldClass = 'mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm'
 
 export default function Expenses() {
   const [expenses, setExpenses] = useState([])
   const [rooms, setRooms] = useState([])
+  const [suppliers, setSuppliers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
@@ -28,8 +30,8 @@ export default function Expenses() {
   async function load() {
     setLoading(true); setError('')
     try {
-      const [items, roomList] = await Promise.all([getExpenses(), getRooms()])
-      setExpenses(items); setRooms(roomList)
+      const [items, roomList, supplierList] = await Promise.all([getExpenses(), getRooms(), getSuppliers()])
+      setExpenses(items); setRooms(roomList); setSuppliers(supplierList.filter(item => item.status !== 'Archivado'))
     } catch (err) { setError(err.message || 'No se pudieron cargar los gastos.') }
     finally { setLoading(false) }
   }
@@ -45,7 +47,7 @@ export default function Expenses() {
     setForm(expense ? {
       ...empty, ...expense,
       budgeted_amount: String(expense.budgeted_amount ?? ''), amount: String(expense.amount ?? ''), paid_amount: String(expense.paid_amount ?? ''),
-      expense_date: expense.expense_date || '', due_date: expense.due_date || '', room_id: expense.room_id || '',
+      expense_date: expense.expense_date || '', due_date: expense.due_date || '', room_id: expense.room_id || '', supplier_id: expense.supplier_id || '',
     } : { ...empty })
     setFormError(''); setOpen(true)
   }
@@ -109,7 +111,7 @@ export default function Expenses() {
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2"><h2 className="break-words font-semibold text-stone-800">{expense.title}</h2><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${status === 'Pagado' ? 'bg-green-100 text-green-700' : status === 'Parcial' ? 'bg-amber-100 text-amber-700' : 'bg-stone-100 text-stone-600'}`}>{status}</span></div>
               <p className="mt-1 text-lg font-bold text-stone-800">{formatCurrency(amount)} <span className="text-xs font-normal text-stone-500">· pagado {formatCurrency(paid)}</span></p>
-              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-500"><span>{expense.category}</span>{expense.vendor && <span>{expense.vendor}</span>}{expense.rooms?.name && <span>{expense.rooms.name}</span>}{expense.expense_date && <span>{new Date(`${expense.expense_date}T12:00:00`).toLocaleDateString('es-ES')}</span>}{expense.due_date && status !== 'Pagado' && <span>Vence {new Date(`${expense.due_date}T12:00:00`).toLocaleDateString('es-ES')}</span>}</div>
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-500"><span>{expense.category}</span>{(expense.suppliers?.name || expense.vendor) && <span>{expense.suppliers?.name || expense.vendor}</span>}{expense.rooms?.name && <span>{expense.rooms.name}</span>}{expense.expense_date && <span>{new Date(`${expense.expense_date}T12:00:00`).toLocaleDateString('es-ES')}</span>}{expense.due_date && status !== 'Pagado' && <span>Vence {new Date(`${expense.due_date}T12:00:00`).toLocaleDateString('es-ES')}</span>}</div>
               {expense.notes && <p className="mt-2 whitespace-pre-wrap break-words text-sm text-stone-500">{expense.notes}</p>}
             </div>
             <button aria-label={`Editar ${expense.title}`} className="rounded-lg p-2 text-stone-500" disabled={busy} onClick={() => edit(expense)}><Pencil size={18} /></button>
@@ -124,7 +126,8 @@ export default function Expenses() {
           <label className="block text-sm">Concepto<input className={fieldClass} value={form.title} required maxLength={200} onChange={event => change('title', event.target.value)} /></label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm">Categoría<select className={fieldClass} value={form.category} onChange={event => change('category', event.target.value)}>{categories.map(value => <option key={value}>{value}</option>)}</select></label>
-            <label className="block text-sm">Proveedor<input className={fieldClass} value={form.vendor} maxLength={200} onChange={event => change('vendor', event.target.value)} /></label>
+            <label className="block text-sm">Proveedor guardado<select className={fieldClass} value={form.supplier_id} onChange={event => { const id = event.target.value; const supplier = suppliers.find(item => item.id === id); setForm(previous => ({ ...previous, supplier_id: id, vendor: supplier?.name || previous.vendor })) }}><option value="">Sin proveedor asociado</option>{suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
+            <label className="block text-sm">Nombre en factura<input className={fieldClass} value={form.vendor} maxLength={200} onChange={event => change('vendor', event.target.value)} /></label>
             <label className="block text-sm">Importe previsto<input type="number" min="0" step="0.01" className={fieldClass} value={form.budgeted_amount} onChange={event => change('budgeted_amount', event.target.value)} /></label>
             <label className="block text-sm">Coste final<input type="number" min="0" step="0.01" className={fieldClass} value={form.amount} onChange={event => change('amount', event.target.value)} /></label>
             <label className="block text-sm">Cantidad pagada<input type="number" min="0" step="0.01" className={fieldClass} value={form.paid_amount} onChange={event => change('paid_amount', event.target.value)} /></label>

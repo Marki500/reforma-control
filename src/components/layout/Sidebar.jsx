@@ -19,7 +19,7 @@ const links = [
   { to: '/notas', label: 'Notas', icon: StickyNote },
   { to: '/presupuestos', label: 'Presupuestos', icon: FileText },
   { to: '/gastos', label: 'Gastos', icon: Receipt },
-  { to: '/proveedores', label: 'Proveedores', icon: Users, disabled: true },
+  { to: '/proveedores', label: 'Proveedores', icon: Users },
   { to: '/tareas', label: 'Tareas', icon: CheckSquare },
   { to: '/inspiracion', label: 'Inspiración', icon: Lightbulb },
 ]

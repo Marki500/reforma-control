@@ -18,7 +18,7 @@ const links = [
   { to: '/planos', label: 'Planos', icon: FloorPlanIcon },
   { to: '/notas', label: 'Notas', icon: StickyNote },
   { to: '/presupuestos', label: 'Presupuestos', icon: FileText },
-  { to: '/facturas', label: 'Facturas', icon: FileText, disabled: true },
+  { to: '/gastos', label: 'Gastos', icon: Receipt },
   { to: '/proveedores', label: 'Proveedores', icon: Users, disabled: true },
   { to: '/tareas', label: 'Tareas', icon: CheckSquare },
   { to: '/inspiracion', label: 'Inspiración', icon: Lightbulb },

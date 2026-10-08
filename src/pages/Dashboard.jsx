@@ -31,6 +31,7 @@ import {
   Settings2,
   FileText,
   Upload,
+  WalletCards,
 } from 'lucide-react'
 
 export default function Dashboard() {
@@ -59,6 +60,7 @@ export default function Dashboard() {
   const [viewerPdf, setViewerPdf] = useState(null)
   const [uploadingCat, setUploadingCat] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [expenseSummary, setExpenseSummary] = useState(null)
 
   const loadDashboard = async () => {
     try {
@@ -85,6 +87,15 @@ export default function Dashboard() {
       })
 
       setRecentMaterials(list.slice(0, 5))
+
+      const { data: expenses, error: expensesError } = await supabase
+        .from('expenses')
+        .select('amount, paid_amount')
+      if (!expensesError) {
+        const actual = (expenses || []).reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
+        const paid = (expenses || []).reduce((sum, item) => sum + (Number(item.paid_amount) || 0), 0)
+        setExpenseSummary({ actual, paid, pending: Math.max(actual - paid, 0) })
+      }
 
       // Group spending by category (only counted materials)
       const byCategory = {}
@@ -252,6 +263,15 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {expenseSummary && (
+        <button type="button" onClick={() => navigate('/gastos')} className="grid w-full gap-4 rounded-2xl bg-white p-6 text-left shadow-sm transition-shadow hover:shadow-md sm:grid-cols-3">
+          <div className="flex items-center gap-3 sm:col-span-3"><div className="rounded-xl bg-gold-light p-3"><WalletCards size={22} className="text-gold" /></div><div><p className="font-semibold text-stone-800">Gastos y pagos</p><p className="text-xs text-stone-500">Ver movimientos</p></div></div>
+          <div><p className="text-xs text-stone-500">Coste real</p><p className="text-lg font-bold text-stone-800">{formatCurrency(expenseSummary.actual)}</p></div>
+          <div><p className="text-xs text-stone-500">Pagado</p><p className="text-lg font-bold text-green-700">{formatCurrency(expenseSummary.paid)}</p></div>
+          <div><p className="text-xs text-stone-500">Pendiente</p><p className="text-lg font-bold text-amber-700">{formatCurrency(expenseSummary.pending)}</p></div>
+        </button>
+      )}
 
       {/* Resumen del proyecto */}
       {resumenNotes.length > 0 && (

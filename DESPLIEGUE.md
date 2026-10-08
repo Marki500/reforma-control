@@ -25,3 +25,9 @@ Antes de desplegar la versión con Tareas, abre Supabase Studio > SQL Editor y e
 El script antiguo `npm run migrate` no incluye esta migración y vuelve a ejecutar migraciones anteriores: no lo uses para activar Tareas.
 
 Después sube el código a GitHub y redeploy en Coolify. Comprueba crear, editar, completar, reabrir y eliminar una tarea ficticia; filtrar por estado/estancia/prioridad y verificar fechas vencidas. Las pruebas de persistencia y aislamiento entre usuarios requieren Supabase y están pendientes de ejecutar tras aplicar la migración.
+
+## Activar Gastos y pagos
+
+Abre Supabase Studio > SQL Editor y ejecuta únicamente `supabase/migrations/00014_expenses.sql`. Crea la tabla de gastos, sus índices y las políticas que aíslan los datos de cada usuario. No borra ni modifica materiales, presupuestos, tareas u otros datos existentes.
+
+Después sube el código a GitHub y haz redeploy en Coolify. Comprueba crear un gasto pendiente, editarlo con un pago parcial, marcarlo como totalmente pagado indicando el mismo importe y eliminar un gasto de prueba. El estado se calcula automáticamente a partir del coste final y la cantidad pagada.

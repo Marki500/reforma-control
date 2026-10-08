@@ -3,6 +3,7 @@ import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Link, Loader2, AlertCircle, CheckCircle } from 'lucide-react'
+import { authenticatedRequest } from '../../services/uploadService'
 
 export default function ImportFromUrlModal({ open, onClose, onImport }) {
   const [url, setUrl] = useState('')
@@ -17,18 +18,7 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
     setResult(null)
 
     try {
-      const response = await fetch('/api/import-product', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
-      })
-
-      if (!response.ok) {
-        const text = await response.text()
-        throw new Error(text || 'Error al importar')
-      }
-
-      const data = await response.json()
+      const data = await authenticatedRequest('/api/import-product', JSON.stringify({ url }), { 'Content-Type': 'application/json' })
       setResult(data)
     } catch (err) {
       setError(err.message || 'No se pudo extraer información de la URL')

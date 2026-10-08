@@ -1,4 +1,4 @@
-import { authenticatedUpload } from './uploadService'
+import { authenticatedRequest, authenticatedUpload } from './uploadService'
 import { normalizeStorageRecord } from '../utils/storageUrl'
 import { supabase } from './supabaseClient'
 
@@ -66,18 +66,7 @@ export async function reorderInspirations(ids) {
 }
 
 export async function extractFromUrl(url) {
-  const response = await fetch('/api/extract-inspiration', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url }),
-  })
-
-  if (!response.ok) {
-    const err = await response.json()
-    throw new Error(err.error || 'Error al extraer')
-  }
-
-  return response.json()
+  return authenticatedRequest('/api/extract-inspiration', JSON.stringify({ url }), { 'Content-Type': 'application/json' })
 }
 
 export async function uploadImageFromUrl(url) {

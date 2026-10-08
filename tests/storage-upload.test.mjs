@@ -4,6 +4,7 @@ import http from 'node:http'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { normalizeStorageUrl } from '../src/utils/storageUrl.js'
+import { isPublicIp, parseRemoteUrl, RemoteFetchError } from '../server/remoteFetch.js'
 
 test('legacy links keep object paths; external links are not rewritten', () => {
   const old = 'https://api-reforma.bycram.dev/storage/v1/object/public/budget-pdfs/a.pdf?download=1#page=2'
@@ -11,6 +12,17 @@ test('legacy links keep object paths; external links are not rewritten', () => {
   assert.equal(normalizeStorageUrl(old, 'https://custom.example'), 'https://custom.example/storage/v1/object/public/budget-pdfs/a.pdf?download=1#page=2')
   for (const url of ['https://shop.example/image.jpg', 'https://api-reforma.bycram.dev/product', 'invalid', null]) {
     assert.equal(normalizeStorageUrl(url), url)
+  }
+})
+
+test('remote URL validation rejects internal networks and unsafe protocols', () => {
+  for (const address of ['127.0.0.1', '10.2.3.4', '100.83.122.85', '169.254.169.254', '192.168.1.10', '::1', 'fd00::1', 'fe80::1']) {
+    assert.equal(isPublicIp(address), false, address)
+  }
+  for (const address of ['1.1.1.1', '8.8.8.8', '2606:4700:4700::1111']) assert.equal(isPublicIp(address), true, address)
+  assert.equal(parseRemoteUrl('https://example.com/item').hostname, 'example.com')
+  for (const url of ['file:///etc/passwd', 'ftp://example.com/a', 'https://user:pass@example.com']) {
+    assert.throws(() => parseRemoteUrl(url), RemoteFetchError)
   }
 })
 
@@ -54,13 +66,22 @@ test('uploads require a valid user and forward that user to Storage', async () =
       await new Promise(resolve => setTimeout(resolve, 100))
     }
     assert.ok(ready, log)
-    for (const endpoint of ['upload-file', 'upload-pdf', 'upload-image']) {
+    for (const endpoint of ['upload-file', 'upload-pdf', 'upload-image', 'import-product', 'extract-inspiration']) {
       const anonymous = await fetch(`${base}/api/${endpoint}`, { method: 'POST' })
       assert.equal(anonymous.status, 401)
       const invalid = await fetch(`${base}/api/${endpoint}`, { method: 'POST', headers: { Authorization: 'Bearer invalid' } })
       assert.equal(invalid.status, 401)
     }
     assert.equal(uploads.length, 0)
+    for (const endpoint of ['upload-image', 'import-product', 'extract-inspiration']) {
+      const response = await fetch(`${base}/api/${endpoint}`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test-user-token', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'http://127.0.0.1/private' }),
+      })
+      assert.equal(response.status, 400, `${endpoint}: ${await response.clone().text()}`)
+      assert.match((await response.json()).error, /interna|reservada/)
+    }
     for (const [endpoint, type, filename, bucket] of [
       ['upload-file', 'image/png', 'test.png', 'images'],
       ['upload-pdf', 'application/pdf', 'test.pdf', 'budget-pdfs'],

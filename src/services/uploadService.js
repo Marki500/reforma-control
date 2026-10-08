@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient'
 
-export async function authenticatedUpload(endpoint, body, headers = {}) {
+export async function authenticatedRequest(endpoint, body, headers = {}) {
   const { data, error } = await supabase.auth.getSession()
   if (error) throw error
   if (!data.session?.access_token) throw new Error('Inicia sesión de nuevo para subir archivos.')
@@ -16,8 +16,14 @@ export async function authenticatedUpload(endpoint, body, headers = {}) {
   }
   const result = await response.json().catch(() => null)
   if (!response.ok) {
-    throw new Error(result?.error || `No se pudo subir el archivo (HTTP ${response.status}).`)
+    throw new Error(result?.error || `La operación no se pudo completar (HTTP ${response.status}).`)
   }
-  if (!result?.url) throw new Error('El servidor no devolvió la dirección del archivo.')
+  if (!result) throw new Error('El servidor devolvió una respuesta no válida.')
+  return result
+}
+
+export async function authenticatedUpload(endpoint, body, headers = {}) {
+  const result = await authenticatedRequest(endpoint, body, headers)
+  if (!result.url) throw new Error('El servidor no devolvió la dirección del archivo.')
   return result
 }

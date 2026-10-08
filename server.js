@@ -6,6 +6,7 @@ import fs from 'fs/promises'
 import { fileURLToPath } from 'url'
 import * as cheerio from 'cheerio'
 import multer from 'multer'
+import { fetchRemote, RemoteFetchError } from './server/remoteFetch.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const uploadsDir = path.join(__dirname, 'uploads')
@@ -21,9 +22,9 @@ app.use(express.json())
 const supabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://api-reforma.noxumlab.com').replace(/\/$/, '')
 const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
 
-async function requireUploadSession(req, res, next) {
+async function requireSession(req, res, next) {
   const authorization = req.get('Authorization')
-  if (!authorization?.startsWith('Bearer ')) return res.status(401).json({ error: 'Inicia sesión para subir archivos.' })
+  if (!authorization?.startsWith('Bearer ')) return res.status(401).json({ error: 'Inicia sesión para realizar esta operación.' })
   if (!supabaseKey) return res.status(503).json({ error: 'Falta configurar la clave pública de Supabase en el servidor.' })
   try {
     const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
@@ -45,7 +46,7 @@ app.get('/api/health', (_req, res) => {
   res.status(200).json({ status: 'ok' })
 })
 
-app.post('/api/import-product', async (req, res) => {
+app.post('/api/import-product', requireSession, async (req, res) => {
   const { url } = req.body
 
   if (!url) {
@@ -59,13 +60,15 @@ app.post('/api/import-product', async (req, res) => {
   }
 
   try {
-    const response = await fetch(url, {
+    const response = await fetchRemote(url, {
+      maxBytes: 2 * 1024 * 1024,
+      timeoutMs: 10000,
+      allowedContentTypes: ['text/html', 'application/xhtml+xml'],
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
         'Referer': 'https://www.google.com/',
         'Sec-Fetch-Dest': 'document',
         'Sec-Fetch-Mode': 'navigate',
@@ -78,14 +81,7 @@ app.post('/api/import-product', async (req, res) => {
       },
     })
 
-    if (!response.ok) {
-      const msg = response.status === 403
-        ? 'La tienda bloquea la extracción automática. Introduce los datos manualmente.'
-        : `HTTP ${response.status}`
-      throw new Error(msg)
-    }
-
-    const html = await response.text()
+    const html = response.body.toString('utf8')
     const $ = cheerio.load(html)
     const hostname = new URL(url).hostname.replace('www.', '')
 
@@ -249,13 +245,13 @@ app.post('/api/import-product', async (req, res) => {
 
     res.json(product)
   } catch (error) {
-    res.status(500).json({
+    res.status(error instanceof RemoteFetchError ? error.status : 500).json({
       error: error instanceof Error ? error.message : 'Error al extraer datos',
     })
   }
 })
 
-app.post('/api/extract-inspiration', async (req, res) => {
+app.post('/api/extract-inspiration', requireSession, async (req, res) => {
   const { url } = req.body
   if (!url) return res.status(400).json({ error: 'URL requerida' })
 
@@ -273,11 +269,14 @@ app.post('/api/extract-inspiration', async (req, res) => {
       if (pinMatch) {
         const pinId = pinMatch[1]
         const widgetUrl = `https://widgets.pinterest.com/v3/pidgets/pins/info/?pin_ids=${pinId}`
-        const widgetRes = await fetch(widgetUrl, {
+        const widgetRes = await fetchRemote(widgetUrl, {
+          maxBytes: 512 * 1024,
+          timeoutMs: 8000,
+          allowedContentTypes: ['application/json'],
           headers: { 'User-Agent': 'Mozilla/5.0' },
         })
-        if (widgetRes.ok) {
-          const widgetData = await widgetRes.json()
+        if (widgetRes.status >= 200 && widgetRes.status < 300) {
+          const widgetData = JSON.parse(widgetRes.body.toString('utf8'))
           const pin = widgetData?.data?.[0]
           if (pin && pin.pinner) {
             const img = pin.images?.orig?.url || pin.images?.['236x']?.url || ''
@@ -292,7 +291,10 @@ app.post('/api/extract-inspiration', async (req, res) => {
       // fallback → return empty so user fills manually
     }
 
-    const response = await fetch(url, {
+    const response = await fetchRemote(url, {
+      maxBytes: 2 * 1024 * 1024,
+      timeoutMs: 10000,
+      allowedContentTypes: ['text/html', 'application/xhtml+xml'],
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -300,9 +302,7 @@ app.post('/api/extract-inspiration', async (req, res) => {
       },
     })
 
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-
-    const html = await response.text()
+    const html = response.body.toString('utf8')
     const $ = cheerio.load(html)
 
     let title = ''
@@ -333,31 +333,28 @@ app.post('/api/extract-inspiration', async (req, res) => {
 
     res.json({ title, image_url, source_url: url })
   } catch (error) {
-    res.status(500).json({
+    res.status(error instanceof RemoteFetchError ? error.status : 500).json({
       error: error instanceof Error ? error.message : 'Error al extraer datos',
     })
   }
 })
 
-app.post('/api/upload-image', requireUploadSession, async (req, res) => {
+app.post('/api/upload-image', requireSession, async (req, res) => {
   const { url } = req.body
   if (!url) return res.status(400).json({ error: 'URL requerida' })
 
   try {
-    const response = await fetch(url, {
+    const response = await fetchRemote(url, {
+      maxBytes: 5 * 1024 * 1024,
+      timeoutMs: 10000,
+      allowedContentTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/avif'],
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
     })
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-
-    const buffer = Buffer.from(await response.arrayBuffer())
-    const contentType = response.headers.get('content-type') || 'image/jpeg'
+    const buffer = response.body
+    const contentType = response.contentType
     const ext = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/avif': '.avif' }[contentType] || '.jpg'
-
-    if (contentType.includes('svg') || url.startsWith('data:')) {
-      return res.json({ url })
-    }
 
     const fileName = `inspirations/${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`
     const storageUrl = `${supabaseUrl}/storage/v1/object/images/${fileName}`
@@ -382,7 +379,7 @@ app.post('/api/upload-image', requireUploadSession, async (req, res) => {
 
     res.json({ url: publicUrl })
   } catch (error) {
-    res.status(500).json({
+    res.status(error instanceof RemoteFetchError ? error.status : 500).json({
       error: error instanceof Error ? error.message : 'Error al subir imagen',
     })
   }
@@ -408,7 +405,7 @@ const pdfUpload = multer({
   },
 })
 
-app.post('/api/upload-file', requireUploadSession, upload.single('file'), async (req, res) => {
+app.post('/api/upload-file', requireSession, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Archivo requerido o formato no válido' })
 
   try {
@@ -439,7 +436,7 @@ app.post('/api/upload-file', requireUploadSession, upload.single('file'), async 
   }
 })
 
-app.post('/api/upload-pdf', requireUploadSession, pdfUpload.single('file'), async (req, res) => {
+app.post('/api/upload-pdf', requireSession, pdfUpload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'PDF requerido' })
 
   try {

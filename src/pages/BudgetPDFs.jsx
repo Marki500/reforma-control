@@ -98,6 +98,10 @@ export default function BudgetPDFs() {
 
   async function analyzeUpload() {
     if (!uploadForm.file || analysisState === 'analyzing') return
+    if (uploadForm.file.size > 14 * 1024 * 1024) {
+      setAnalysisError('Para analizarlo con IA, el PDF debe ocupar como máximo 14 MB. Puedes rellenarlo manualmente.')
+      return
+    }
     setAnalysisState('analyzing')
     setAnalysisError('')
     try {

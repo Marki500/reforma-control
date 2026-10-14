@@ -4,6 +4,7 @@ import cors from 'cors'
 import path from 'path'
 import fs from 'fs/promises'
 import { fileURLToPath } from 'url'
+import { randomUUID } from 'node:crypto'
 import * as cheerio from 'cheerio'
 import multer from 'multer'
 import { fetchRemote, normalizeRemoteUrl, RemoteFetchError } from './server/remoteFetch.js'
@@ -18,6 +19,12 @@ fs.mkdir(uploadsDir, { recursive: true }).catch(() => {})
 const app = express()
 app.use(cors())
 app.use(express.json())
+app.use((req, res, next) => {
+  const incomingId = req.get('x-request-id')
+  req.requestId = /^[a-zA-Z0-9_-]{8,80}$/.test(incomingId || '') ? incomingId : randomUUID()
+  res.set('x-request-id', req.requestId)
+  next()
+})
 
 
 const supabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://api-reforma.noxumlab.com').replace(/\/$/, '')
@@ -406,62 +413,32 @@ const documentUpload = multer({
   fileFilter: (_req, file, cb) => cb(null, ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)),
 })
 
-function getInteractionText(payload) {
-  if (typeof payload?.output_text === 'string') return payload.output_text
-  const steps = Array.isArray(payload?.steps) ? payload.steps : []
-  const lastStep = steps.at(-1)
-  return (lastStep?.content || []).map(part => part?.text || '').join('')
-}
-
 function getGenerateContentText(payload) {
   return (payload?.candidates?.[0]?.content?.parts || []).map(part => part?.text || '').join('')
 }
 
 async function requestBudgetAnalysis(file) {
   const base64 = file.buffer.toString('base64')
-  const interactionResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(aiModel)}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(45000),
     body: JSON.stringify({
-      model: aiModel,
-      input: [
-        { type: 'document', data: base64, mime_type: 'application/pdf' },
-        { type: 'text', text: budgetAnalysisPrompt },
-      ],
-      response_format: { type: 'text', mime_type: 'application/json', schema: budgetAnalysisSchema },
+      contents: [{ parts: [
+        { inline_data: { mime_type: 'application/pdf', data: base64 } },
+        { text: `${budgetAnalysisPrompt}\nDevuelve exclusivamente un objeto JSON válido que cumpla este esquema: ${JSON.stringify(budgetAnalysisSchema)}` },
+      ] }],
+      generationConfig: { responseMimeType: 'application/json', temperature: 0.1, maxOutputTokens: 8192 },
     }),
   })
-  let payload = await interactionResponse.json().catch(() => ({}))
-  let text = getInteractionText(payload)
-
-  // Older Gemini models may not support the newer Interactions endpoint yet.
-  if (!interactionResponse.ok && [400, 404].includes(interactionResponse.status)) {
-    const fallbackResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(aiModel)}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
-      signal: AbortSignal.timeout(60000),
-      body: JSON.stringify({
-        contents: [{ parts: [
-          { inline_data: { mime_type: 'application/pdf', data: base64 } },
-          { text: `${budgetAnalysisPrompt}\nDevuelve exclusivamente JSON válido con la estructura solicitada.` },
-        ] }],
-        generationConfig: { responseMimeType: 'application/json', temperature: 0.1 },
-      }),
-    })
-    payload = await fallbackResponse.json().catch(() => ({}))
-    text = getGenerateContentText(payload)
-    if (!fallbackResponse.ok) {
-      const error = new Error(payload?.error?.message || `Gemini respondió con HTTP ${fallbackResponse.status}.`)
-      error.status = fallbackResponse.status
-      throw error
-    }
-  } else if (!interactionResponse.ok) {
-    const error = new Error(payload?.error?.message || `Gemini respondió con HTTP ${interactionResponse.status}.`)
-    error.status = interactionResponse.status
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const error = new Error(payload?.error?.message || `Gemini respondió con HTTP ${response.status}.`)
+    error.status = response.status
     throw error
   }
 
+  const text = getGenerateContentText(payload)
   const jsonText = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
   if (!jsonText) throw new Error('La IA no devolvió datos para este documento.')
   try {
@@ -471,32 +448,46 @@ async function requestBudgetAnalysis(file) {
   }
 }
 
+function classifyAIError(error) {
+  const message = error instanceof Error ? error.message : ''
+  if (error?.name === 'TimeoutError' || error?.name === 'AbortError' || /timeout|timed out/i.test(message)) {
+    return { status: 504, code: 'AI_TIMEOUT', message: 'La IA tardó demasiado en procesar el PDF.' }
+  }
+  if (error?.status === 429) return { status: 429, code: 'AI_RATE_LIMIT', message: 'Se ha alcanzado temporalmente el límite gratuito de Gemini.' }
+  if ([401, 403].includes(error?.status)) return { status: 503, code: 'AI_KEY_REJECTED', message: 'Gemini ha rechazado la clave API configurada.' }
+  if (error?.status === 404) return { status: 503, code: 'AI_MODEL_NOT_FOUND', message: `El modelo “${aiModel}” no está disponible para esta clave.` }
+  if (error?.status === 400) return { status: 502, code: 'AI_REQUEST_REJECTED', message: 'Gemini ha rechazado el PDF o la configuración del modelo.' }
+  if (/fetch failed|network|ENOTFOUND|ECONN/i.test(message)) return { status: 502, code: 'AI_CONNECTION', message: 'El servidor no ha podido conectarse con Gemini.' }
+  if (/no devolvió datos|no se pudo interpretar/i.test(message)) return { status: 502, code: 'AI_INVALID_RESPONSE', message }
+  return { status: 502, code: 'AI_UNKNOWN', message: 'No se pudo completar el análisis con IA.' }
+}
+
 app.post('/api/analyze-budget', requireSession, pdfUpload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Selecciona un archivo PDF válido.' })
-  if (!geminiApiKey) return res.status(503).json({ error: 'La IA todavía no está configurada en el servidor.' })
-  if (req.file.size > 14 * 1024 * 1024) return res.status(413).json({ error: 'Para analizarlo con IA, el PDF debe ocupar como máximo 14 MB.' })
+  const startedAt = Date.now()
+  const diagnostic = { requestId: req.requestId, userId: req.authUser.id, model: aiModel }
+  if (!req.file) return res.status(400).json({ error: 'Selecciona un archivo PDF válido.', code: 'INVALID_PDF', request_id: req.requestId })
+  if (!geminiApiKey) return res.status(503).json({ error: 'La IA todavía no está configurada en el servidor.', code: 'AI_NOT_CONFIGURED', request_id: req.requestId })
+  if (req.file.size > 14 * 1024 * 1024) return res.status(413).json({ error: 'Para analizarlo con IA, el PDF debe ocupar como máximo 14 MB.', code: 'PDF_TOO_LARGE', request_id: req.requestId })
 
   const userId = req.authUser.id
   const now = Date.now()
   if (now - (aiRequestTimes.get(userId) || 0) < 5000) {
-    return res.status(429).json({ error: 'Espera unos segundos antes de volver a analizar otro documento.' })
+    return res.status(429).json({ error: 'Espera unos segundos antes de volver a analizar otro documento.', code: 'LOCAL_RATE_LIMIT', request_id: req.requestId })
   }
   aiRequestTimes.set(userId, now)
   if (aiRequestTimes.size > 1000) {
     for (const [id, time] of aiRequestTimes) if (now - time > 60 * 60 * 1000) aiRequestTimes.delete(id)
   }
 
+  console.info('[AI budget analysis:start]', { ...diagnostic, bytes: req.file.size })
   try {
     const draft = await requestBudgetAnalysis(req.file)
-    res.json({ draft, model: aiModel })
+    console.info('[AI budget analysis:success]', { ...diagnostic, durationMs: Date.now() - startedAt, lineItems: draft.line_items.length })
+    res.json({ draft, model: aiModel, request_id: req.requestId })
   } catch (error) {
-    const status = error?.status === 429 ? 429 : error?.status === 401 || error?.status === 403 ? 503 : 502
-    const message = status === 429
-      ? 'Se ha alcanzado temporalmente el límite gratuito de la IA. Inténtalo más tarde.'
-      : status === 503
-        ? 'La clave o el modelo de IA no son válidos. Revisa las variables del servidor.'
-        : error instanceof Error ? error.message : 'No se pudo analizar el presupuesto.'
-    res.status(status).json({ error: message })
+    const classified = classifyAIError(error)
+    console.error('[AI budget analysis:error]', { ...diagnostic, durationMs: Date.now() - startedAt, code: classified.code, providerStatus: error?.status || null, providerMessage: error?.message || 'Unknown error' })
+    res.status(classified.status).json({ error: classified.message, code: classified.code, request_id: req.requestId })
   }
 })
 

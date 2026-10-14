@@ -8,9 +8,10 @@ export async function getSuppliers() {
 
 export async function saveSupplier(id, form) {
   const payload = {
-    name: form.name.trim(), trade: form.trade, contact_person: form.contact_person.trim(),
+    name: form.name.trim(), trade: form.trade.trim(), contact_person: form.contact_person.trim(),
     phone: form.phone.trim(), email: form.email.trim(), website: form.website.trim(),
-    address: form.address.trim(), status: form.status, notes: form.notes.trim(), updated_at: new Date().toISOString(),
+    address: form.address.trim(), status: form.status, contacted: Boolean(form.contacted),
+    opinion: form.opinion.trim(), notes: form.notes.trim(), updated_at: new Date().toISOString(),
   }
   let query
   if (id) query = supabase.from('suppliers').update(payload).eq('id', id)

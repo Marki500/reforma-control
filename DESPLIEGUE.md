@@ -26,6 +26,12 @@ El script antiguo `npm run migrate` no incluye esta migración y vuelve a ejecut
 
 Después sube el código a GitHub y redeploy en Coolify. Comprueba crear, editar, completar, reabrir y eliminar una tarea ficticia; filtrar por estado/estancia/prioridad y verificar fechas vencidas. Las pruebas de persistencia y aislamiento entre usuarios requieren Supabase y están pendientes de ejecutar tras aplicar la migración.
 
+### Activar los pasos dentro de una tarea
+
+Si la tabla `tasks` ya está activa, ejecuta únicamente `supabase/migrations/00017_task_items.sql` en Supabase Studio > SQL Editor antes de desplegar esta versión. La migración crea la checklist asociada a cada tarea, su índice y las políticas que limitan el acceso al propietario de la tarea. Al eliminar una tarea, sus pasos se eliminan automáticamente.
+
+Tras el redeploy, crea una tarea con varios pasos, marca algunos desde la tarjeta y comprueba el contador de progreso. Verifica también que completar la tarea principal completa todos sus pasos y que desmarcar un paso de una tarea completada cambia la tarea a «En curso».
+
 ## Activar Gastos y pagos
 
 Abre Supabase Studio > SQL Editor y ejecuta únicamente `supabase/migrations/00014_expenses.sql`. Crea la tabla de gastos, sus índices y las políticas que aíslan los datos de cada usuario. No borra ni modifica materiales, presupuestos, tareas u otros datos existentes.
@@ -37,6 +43,12 @@ Después sube el código a GitHub y haz redeploy en Coolify. Comprueba crear un 
 Después de aplicar `00014_expenses.sql`, ejecuta únicamente `supabase/migrations/00015_suppliers.sql` en Supabase Studio > SQL Editor. Crea los proveedores, añade su relación opcional con los gastos y actualiza las políticas de gastos para impedir asociar proveedores de otro usuario.
 
 Tras el redeploy, crea un proveedor, edítalo y selecciónalo en un gasto. Al eliminar un proveedor, el gasto permanece y conserva el nombre que figuraba en la factura.
+
+### Contacto, opinión y oficios personalizados
+
+Después de tener activa `00015_suppliers.sql`, ejecuta únicamente `supabase/migrations/00018_supplier_contact_and_trades.sql` en Supabase Studio > SQL Editor. La migración añade el indicador de contacto y la opinión, y permite escribir cualquier especialidad u oficio en lugar de limitarse a una lista cerrada. No modifica los proveedores existentes: inicialmente aparecerán como «Por contactar» y conservarán todos sus datos.
+
+Tras el redeploy, comprueba un proveedor marcado como contactado, otro pendiente de contacto y el filtro correspondiente. Añade también un proveedor con el oficio «Lampista» y otro con un oficio nuevo escrito manualmente; ambos deben poder guardarse y aparecer en el filtro de especialidades.
 
 ## Activar Fotos de progreso
 

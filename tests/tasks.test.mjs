@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { filterTasks, isTaskOverdue, localDateKey } from '../src/utils/tasks.js'
+import { filterTasks, getTaskProgress, isTaskOverdue, localDateKey } from '../src/utils/tasks.js'
 
 const tasks = [
   { id: 1, title: 'Pedir ventanas', description: 'Comparar presupuestos', status: 'Pendiente', priority: 'Alta', room_id: 'salon', due_date: '2026-10-06' },
@@ -18,4 +18,13 @@ test('task filters combine, including description search and overdue state', () 
   assert.deepEqual(filterTasks(tasks, { search: ' PRESUPUESTOS ', status: 'Pendiente', priority: 'Alta', room_id: 'salon', overdue: true }, '2026-10-07').map(task => task.id), [1])
   assert.equal(filterTasks(tasks, { room_id: 'bano', overdue: true }, '2026-10-07').length, 0)
   assert.deepEqual(filterTasks(tasks, { status: 'En curso' }).map(task => task.id), [3])
+})
+test('subtasks are searchable and expose their progress', () => {
+  const task = { ...tasks[0], task_items: [
+    { title: 'Aceptar presupuesto', is_completed: true },
+    { title: 'Pedir certificado', is_completed: false },
+  ] }
+  assert.deepEqual(getTaskProgress(task), { completed: 1, total: 2, percent: 50 })
+  assert.deepEqual(filterTasks([task], { search: 'certificado' }).map(item => item.id), [1])
+  assert.deepEqual(getTaskProgress(tasks[1]), { completed: 0, total: 0, percent: 0 })
 })

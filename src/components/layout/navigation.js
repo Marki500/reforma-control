@@ -1,5 +1,6 @@
 export const navigationLinks = [
   { to: '/dashboard', label: 'Resumen', icon: 'dashboard' },
+  { to: '/vivienda', label: 'Vivienda', icon: 'home' },
   { to: '/materials', label: 'Materiales', icon: 'materials' },
   { to: '/planos', label: 'Planos', icon: 'plans' },
   { to: '/notas', label: 'Notas', icon: 'notes' },

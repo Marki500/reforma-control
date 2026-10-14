@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Building2, CheckCircle2, CircleDashed, Globe, Mail, MapPin, MessageSquareQuote, Pencil, Phone, Plus, Trash2, UserRound } from 'lucide-react'
+import { Building2, CheckCircle2, CircleDashed, FileText, Globe, Mail, MapPin, MessageSquareQuote, Pencil, Phone, Plus, Trash2, UserRound } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { deleteSupplier, getSuppliers, saveSupplier } from '../services/suppliersService'
 import { filterSuppliers } from '../utils/suppliers'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
+import { getBudgetPDFs } from '../services/budgetPDFService'
 
 const tradeSuggestions = ['Albañilería', 'Arquitectura', 'Carpintería', 'Climatización', 'Electricidad', 'Fontanería', 'Lampista', 'Pintura', 'Tienda', 'Otro']
 const statuses = ['Candidato', 'Activo', 'Archivado']
@@ -11,7 +13,9 @@ const empty = { name: '', trade: 'Otro', contact_person: '', phone: '', email: '
 const fieldClass = 'mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-stone-500 focus:ring-2 focus:ring-stone-200'
 
 export default function Suppliers() {
+  const navigate = useNavigate()
   const [suppliers, setSuppliers] = useState([])
+  const [budgets, setBudgets] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
@@ -24,7 +28,7 @@ export default function Suppliers() {
 
   async function load() {
     setLoading(true); setError('')
-    try { setSuppliers(await getSuppliers()) }
+    try { const [supplierList, budgetList] = await Promise.all([getSuppliers(), getBudgetPDFs()]); setSuppliers(supplierList); setBudgets(budgetList) }
     catch (err) { setError(err.message || 'No se pudieron cargar los proveedores.') }
     finally { setLoading(false) }
   }
@@ -73,6 +77,7 @@ export default function Suppliers() {
     {loading ? <p role="status">Cargando proveedores…</p> : !error && filtered.length === 0 ? <div className="rounded-2xl bg-white p-10 text-center text-stone-500"><Building2 className="mx-auto mb-3" />{suppliers.length ? 'No hay proveedores con estos filtros.' : 'Añade tu primer profesional o tienda.'}</div> : <div className="grid gap-4 md:grid-cols-2">{filtered.map(supplier => <article key={supplier.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-stone-200/70 sm:p-5">
       <div className="flex items-start gap-3"><div className="rounded-xl bg-olive-light p-3 text-olive"><Building2 size={22} /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="break-words font-semibold text-stone-800">{supplier.name}</h2><span className={`rounded-md px-2 py-0.5 text-xs ${supplier.status === 'Activo' ? 'bg-green-100 text-green-700' : supplier.status === 'Candidato' ? 'bg-amber-100 text-amber-700' : 'bg-stone-100 text-stone-500'}`}>{supplier.status}</span></div><p className="mt-1 text-sm text-stone-500">{supplier.trade}</p><p className={`mt-2 flex items-center gap-1.5 text-xs font-medium ${supplier.contacted ? 'text-olive' : 'text-stone-400'}`}>{supplier.contacted ? <CheckCircle2 size={14} /> : <CircleDashed size={14} />}{supplier.contacted ? 'Contactado' : 'Por contactar'}</p></div><button aria-label={`Editar ${supplier.name}`} className="rounded-lg p-2 text-stone-500 transition hover:bg-stone-100 hover:text-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400" onClick={() => edit(supplier)}><Pencil size={18} /></button><button aria-label={`Eliminar ${supplier.name}`} className="rounded-lg p-2 text-stone-500 transition hover:bg-red-50 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400" onClick={() => setDeleting(supplier)}><Trash2 size={18} /></button></div>
       <div className="mt-4 space-y-2 text-sm text-stone-600">{supplier.contact_person && <p className="flex items-center gap-2"><UserRound size={15} />{supplier.contact_person}</p>}{supplier.phone && <a className="flex items-center gap-2 hover:underline" href={`tel:${supplier.phone}`}><Phone size={15} />{supplier.phone}</a>}{supplier.email && <a className="flex items-center gap-2 break-all hover:underline" href={`mailto:${supplier.email}`}><Mail size={15} />{supplier.email}</a>}{supplier.website && <a className="flex items-center gap-2 break-all hover:underline" href={supplier.website} target="_blank" rel="noreferrer"><Globe size={15} />{supplier.website}</a>}{supplier.address && <p className="flex items-start gap-2"><MapPin className="mt-0.5 shrink-0" size={15} />{supplier.address}</p>}</div>
+      {budgets.some(budget => budget.supplier_id === supplier.id) && <button type="button" onClick={() => navigate(`/presupuestos?supplier=${supplier.id}`)} className="mt-4 inline-flex min-h-[40px] items-center gap-2 rounded-xl bg-terracotta-light px-3 text-xs font-medium text-terracotta"><FileText size={15} />{budgets.filter(budget => budget.supplier_id === supplier.id).length} {budgets.filter(budget => budget.supplier_id === supplier.id).length === 1 ? 'presupuesto vinculado' : 'presupuestos vinculados'}</button>}
       {supplier.opinion && <blockquote className="mt-4 flex items-start gap-2.5 rounded-xl bg-stone-50 p-3 text-sm leading-relaxed text-stone-700"><MessageSquareQuote className="mt-0.5 shrink-0 text-stone-400" size={17} /><p className="whitespace-pre-wrap break-words">{supplier.opinion}</p></blockquote>}
       {supplier.notes && <p className="mt-4 whitespace-pre-wrap border-t border-stone-100 pt-3 text-sm text-stone-500">{supplier.notes}</p>}
     </article>)}</div>}

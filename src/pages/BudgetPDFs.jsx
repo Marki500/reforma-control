@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   FileText,
   Upload,
@@ -8,36 +8,50 @@ import {
   FolderOpen,
   Plus,
   X,
+  Building2,
+  Pencil,
 } from 'lucide-react'
 import {
   getBudgetPDFs,
   createBudgetPDF,
   deleteBudgetPDF,
   uploadPDF,
+  updateBudgetPDF,
 } from '../services/budgetPDFService'
 import { getCategories } from '../services/materialsService'
+import { getSuppliers } from '../services/suppliersService'
 import BudgetPDFViewer from '../components/budget/BudgetPDFViewer'
+import { Modal } from '../components/ui/Modal'
+import { Button } from '../components/ui/Button'
 
 export default function BudgetPDFs() {
   const [operationError, setOperationError] = useState('')
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [pdfs, setPdfs] = useState([])
   const [categories, setCategories] = useState([])
+  const [suppliers, setSuppliers] = useState([])
   const [loading, setLoading] = useState(true)
   const [viewerPdf, setViewerPdf] = useState(null)
   const [uploadOpen, setUploadOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [filterCat, setFilterCat] = useState('')
+  const [filterSupplier, setFilterSupplier] = useState(() => searchParams.get('supplier') || '')
+  const [uploadForm, setUploadForm] = useState({ file: null, name: '', category_id: '', supplier_id: '', notes: '' })
+  const [editingPdf, setEditingPdf] = useState(null)
+  const [editForm, setEditForm] = useState({ name: '', category_id: '', supplier_id: '', notes: '' })
   const fileRef = useRef()
 
   const load = async () => {
     try {
-      const [pdfsData, cats] = await Promise.all([
+      const [pdfsData, cats, supplierList] = await Promise.all([
         getBudgetPDFs(),
         getCategories(),
+        getSuppliers(),
       ])
       setPdfs(pdfsData)
       setCategories(cats)
+      setSuppliers(supplierList.filter(item => item.status !== 'Archivado'))
     } catch (err) {
       setOperationError(err.message || 'No se pudo completar la operación.')
       console.error(err)
@@ -48,17 +62,30 @@ export default function BudgetPDFs() {
 
   useEffect(() => { load() }, [])
 
-  async function handleUpload(file) {
-    if (!file) return
+  function chooseFile(file) {
+    if (!file || file.type !== 'application/pdf') return
+    setUploadForm(previous => ({ ...previous, file, name: previous.name || file.name.replace(/\.pdf$/i, '') }))
+  }
+
+  function openUpload() {
+    setUploadForm({ file: null, name: '', category_id: '', supplier_id: '', notes: '' })
+    setUploadOpen(true)
+  }
+
+  async function handleUpload(event) {
+    event.preventDefault()
+    if (!uploadForm.file) { setOperationError('Selecciona un archivo PDF.'); return }
     setOperationError('')
     setUploading(true)
     try {
-      const result = await uploadPDF(file)
-      const name = file.name.replace(/\.pdf$/i, '')
+      const result = await uploadPDF(uploadForm.file)
       await createBudgetPDF({
-        name,
+        name: uploadForm.name.trim() || uploadForm.file.name.replace(/\.pdf$/i, ''),
         file_url: result.url,
         file_size: result.size,
+        category_id: uploadForm.category_id || null,
+        supplier_id: uploadForm.supplier_id || null,
+        notes: uploadForm.notes.trim(),
       })
       await load()
       setUploadOpen(false)
@@ -81,9 +108,24 @@ export default function BudgetPDFs() {
     }
   }
 
-  const filtered = filterCat
-    ? pdfs.filter((p) => p.category_id === filterCat)
-    : pdfs
+  function editMetadata(pdf) {
+    setEditingPdf(pdf)
+    setEditForm({ name: pdf.name || '', category_id: pdf.category_id || '', supplier_id: pdf.supplier_id || '', notes: pdf.notes || '' })
+  }
+
+  async function saveMetadata(event) {
+    event.preventDefault()
+    if (!editingPdf || uploading) return
+    setUploading(true); setOperationError('')
+    try {
+      const updated = await updateBudgetPDF(editingPdf.id, { name: editForm.name.trim() || 'Presupuesto', category_id: editForm.category_id || null, supplier_id: editForm.supplier_id || null, notes: editForm.notes.trim() })
+      setPdfs(previous => previous.map(pdf => pdf.id === updated.id ? updated : pdf))
+      setEditingPdf(null)
+    } catch (err) { setOperationError(err.message || 'No se pudo actualizar el presupuesto.') }
+    finally { setUploading(false) }
+  }
+
+  const filtered = pdfs.filter(pdf => (!filterCat || pdf.category_id === filterCat) && (!filterSupplier || pdf.supplier_id === filterSupplier))
 
   if (loading) {
     return (
@@ -106,7 +148,7 @@ export default function BudgetPDFs() {
           </p>
         </div>
         <button
-          onClick={() => setUploadOpen(true)}
+          onClick={openUpload}
           className="inline-flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-xl bg-stone-700 px-4 py-2 text-sm font-medium text-white transition-all hover:bg-stone-800 sm:w-auto"
         >
           <Plus size={16} />
@@ -115,7 +157,8 @@ export default function BudgetPDFs() {
       </div>
 
       {pdfs.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="space-y-3 rounded-2xl bg-white p-3 shadow-sm sm:p-4">
+          <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setFilterCat('')}
             className={`rounded-xl px-3 py-1.5 text-xs font-medium transition-colors ${
@@ -139,6 +182,13 @@ export default function BudgetPDFs() {
               {cat.name}
             </button>
           ))}
+          </div>
+          <label className="block text-xs font-medium text-stone-500 sm:max-w-sm">Proveedor
+            <select value={filterSupplier} onChange={event => setFilterSupplier(event.target.value)} className="mt-1 min-h-[42px] w-full rounded-xl border border-stone-200 bg-stone-50 px-3 text-sm text-stone-700">
+              <option value="">Todos los proveedores</option>
+              {suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.trade}</option>)}
+            </select>
+          </label>
         </div>
       )}
 
@@ -152,7 +202,7 @@ export default function BudgetPDFs() {
           </p>
           {pdfs.length === 0 && (
             <button
-              onClick={() => setUploadOpen(true)}
+              onClick={openUpload}
               className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-stone-700 px-4 py-2 text-sm font-medium text-white transition-all hover:bg-stone-800"
             >
               <Upload size={16} />
@@ -182,6 +232,7 @@ export default function BudgetPDFs() {
                         ? ` · ${(pdf.file_size / 1024 / 1024).toFixed(1)} MB`
                         : ''}
                     </p>
+                    {pdf.suppliers?.name && <p className="mt-1 flex items-center gap-1 text-xs font-medium text-olive"><Building2 size={12} />{pdf.suppliers.name}</p>}
                   </div>
                 </div>
               </div>
@@ -211,6 +262,13 @@ export default function BudgetPDFs() {
                   Descargar
                 </a>
                 <button
+                  onClick={() => editMetadata(pdf)}
+                  aria-label={`Editar ${pdf.name}`}
+                  className="flex items-center justify-center rounded-xl border border-stone-200 px-3 py-2 text-stone-400 transition-colors hover:bg-stone-50 hover:text-stone-700"
+                >
+                  <Pencil size={14} />
+                </button>
+                <button
                   onClick={() => handleDelete(pdf.id)}
                   className="flex items-center justify-center gap-1.5 rounded-xl border border-stone-200 px-3 py-2 text-xs font-medium text-stone-400 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-500"
                 >
@@ -227,7 +285,7 @@ export default function BudgetPDFs() {
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 backdrop-blur-sm sm:items-center sm:p-4"
           onClick={(e) => e.target === e.currentTarget && setUploadOpen(false)}
         >
-          <div className="max-h-[calc(100dvh-0.75rem)] w-full max-w-md overflow-y-auto rounded-t-[1.5rem] bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-xl sm:rounded-2xl sm:p-6">
+          <form onSubmit={handleUpload} className="max-h-[calc(100dvh-0.75rem)] w-full max-w-md overflow-y-auto rounded-t-[1.5rem] bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-xl sm:rounded-2xl sm:p-6">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-stone-800">
                 Subir presupuesto
@@ -244,18 +302,17 @@ export default function BudgetPDFs() {
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault()
-                const file = e.dataTransfer.files[0]
-                if (file?.type === 'application/pdf') handleUpload(file)
+                chooseFile(e.dataTransfer.files[0])
               }}
               onClick={() => fileRef.current?.click()}
               className="flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed border-stone-300 px-6 py-10 text-center transition-colors hover:border-stone-400 hover:bg-stone-50"
             >
-              <Upload size={32} className="text-stone-300" />
+              {uploadForm.file ? <FileText size={32} className="text-terracotta" /> : <Upload size={32} className="text-stone-300" />}
               <div>
                 <p className="text-sm font-medium text-stone-700">
-                  Haz clic o arrastra un PDF aquí
+                  {uploadForm.file ? uploadForm.file.name : 'Haz clic o arrastra un PDF aquí'}
                 </p>
-                <p className="text-xs text-stone-400">PDF hasta 20 MB</p>
+                <p className="text-xs text-stone-400">{uploadForm.file ? `${(uploadForm.file.size / 1024 / 1024).toFixed(1)} MB · Pulsa para cambiar` : 'PDF hasta 20 MB'}</p>
               </div>
             </div>
 
@@ -266,22 +323,31 @@ export default function BudgetPDFs() {
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0]
-                if (file) handleUpload(file)
+                chooseFile(file)
               }}
               disabled={uploading}
             />
-
-            {uploading && (
-              <div className="mt-4 flex items-center justify-center gap-2 text-sm text-stone-500">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-stone-300 border-t-stone-600" />
-                Subiendo...
-              </div>
-            )}
-          </div>
+            <div className="mt-4 space-y-3">
+              <label className="block text-sm">Nombre<input value={uploadForm.name} onChange={event => setUploadForm(previous => ({ ...previous, name: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" placeholder="Ej. Presupuesto instalación eléctrica" /></label>
+              <label className="block text-sm">Proveedor<select value={uploadForm.supplier_id} onChange={event => setUploadForm(previous => ({ ...previous, supplier_id: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"><option value="">Sin proveedor vinculado</option>{suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.trade}</option>)}</select></label>
+              <label className="block text-sm">Categoría<select value={uploadForm.category_id} onChange={event => setUploadForm(previous => ({ ...previous, category_id: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"><option value="">Sin categoría</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+              <label className="block text-sm">Notas<textarea rows={2} value={uploadForm.notes} onChange={event => setUploadForm(previous => ({ ...previous, notes: event.target.value }))} className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" /></label>
+              <button type="submit" disabled={uploading || !uploadForm.file} className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-stone-700 px-4 text-sm font-medium text-white disabled:opacity-50">{uploading && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />}{uploading ? 'Subiendo…' : 'Guardar presupuesto'}</button>
+            </div>
+          </form>
         </div>
       )}
 
       <BudgetPDFViewer pdf={viewerPdf} onClose={() => setViewerPdf(null)} />
+      <Modal open={Boolean(editingPdf)} onClose={() => !uploading && setEditingPdf(null)} title="Editar presupuesto">
+        <form onSubmit={saveMetadata} className="space-y-4">
+          <label className="block text-sm">Nombre<input required value={editForm.name} onChange={event => setEditForm(previous => ({ ...previous, name: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" /></label>
+          <label className="block text-sm">Proveedor<select value={editForm.supplier_id} onChange={event => setEditForm(previous => ({ ...previous, supplier_id: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"><option value="">Sin proveedor vinculado</option>{suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.trade}</option>)}</select></label>
+          <label className="block text-sm">Categoría<select value={editForm.category_id} onChange={event => setEditForm(previous => ({ ...previous, category_id: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"><option value="">Sin categoría</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+          <label className="block text-sm">Notas<textarea rows={3} value={editForm.notes} onChange={event => setEditForm(previous => ({ ...previous, notes: event.target.value }))} className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" /></label>
+          <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setEditingPdf(null)} disabled={uploading}>Cancelar</Button><Button type="submit" disabled={uploading}>{uploading ? 'Guardando…' : 'Guardar'}</Button></div>
+        </form>
+      </Modal>
     </div>
   )
 }

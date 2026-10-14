@@ -2,6 +2,7 @@ const drawings = {
   dashboard: <><path d="M4 11.5 12 5l8 6.5" /><path d="M6.5 10.5V20h11v-9.5M10 20v-5h4v5" /></>,
   materials: <><path d="m5 8 7-4 7 4-7 4-7-4Z" /><path d="m5 12 7 4 7-4M5 16l7 4 7-4" /></>,
   plans: <><path d="M5 4h10l4 4v12H5z" /><path d="M15 4v5h4M8 13h8M8 17h5" /></>,
+  home: <><path d="m3.5 11.5 8.5-7 8.5 7" /><path d="M5.5 10v10h13V10M9.5 20v-6h5v6" /></>,
   notes: <><path d="M6 4h12v16H6z" /><path d="M9 8h6M9 12h6M9 16h4" /></>,
   budgets: <><path d="M5 5h14v14H5z" /><path d="M8 9h8M8 13h5M15.5 16.5h.01" /></>,
   expenses: <><path d="M4 8h16v11H4z" /><path d="M4 11h16M8 15h3" /></>,

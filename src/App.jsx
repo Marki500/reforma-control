@@ -13,6 +13,7 @@ import Expenses from './pages/Expenses'
 import Suppliers from './pages/Suppliers'
 import Calendar from './pages/Calendar'
 import ProgressPhotos from './pages/ProgressPhotos'
+import HomeInfo from './pages/HomeInfo'
 import AppLayout from './components/layout/AppLayout'
 
 function ProtectedRoute({ children }) {
@@ -66,6 +67,7 @@ export default function App() {
       >
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
+        <Route path="vivienda" element={<HomeInfo />} />
         <Route path="materials" element={<Materials />} />
         <Route path="planos" element={<FloorPlan />} />
         <Route path="notas" element={<Notes />} />

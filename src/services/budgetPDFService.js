@@ -8,7 +8,7 @@ export async function getBudgetPDFs() {
 
   const { data, error } = await supabase
     .from('budget_pdfs')
-    .select('*, material_categories(name)')
+    .select('*, material_categories(name), suppliers(id, name, trade)')
     .eq('user_id', user.user.id)
     .order('created_at', { ascending: false })
 
@@ -22,7 +22,7 @@ export async function getBudgetPDFsByCategory(categoryId) {
 
   const { data, error } = await supabase
     .from('budget_pdfs')
-    .select('*, material_categories(name)')
+    .select('*, material_categories(name), suppliers(id, name, trade)')
     .eq('user_id', user.user.id)
     .eq('category_id', categoryId)
     .order('created_at', { ascending: false })
@@ -52,6 +52,18 @@ export async function deleteBudgetPDF(id) {
     .eq('id', id)
 
   if (error) throw error
+}
+
+export async function updateBudgetPDF(id, changes) {
+  const { data, error } = await supabase
+    .from('budget_pdfs')
+    .update({ ...changes, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select('*, material_categories(name), suppliers(id, name, trade)')
+    .single()
+
+  if (error) throw error
+  return normalizeStorageRecord(data)
 }
 
 export async function uploadPDF(file) {

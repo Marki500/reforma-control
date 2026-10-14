@@ -59,6 +59,21 @@ test('uploads require a valid user and forward that user to Storage', async () =
       res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ is_budget: true, document_title: 'Presupuesto de prueba', supplier_name: '', quote_number: '', issued_date: '', valid_until: '', suggested_category: '', subtotal: 100, tax_rate: 21, tax_amount: 21, total_amount: 121, payment_terms: '', warranty: '', notes: '', line_items: [], warnings: [] }) }] } }] }))
       return
     }
+    if (req.url === '/upload/v1beta/files') {
+      for await (const _chunk of req) {}
+      res.setHeader('x-goog-upload-url', `${mockUrl}/gemini-upload`)
+      res.end('{}')
+      return
+    }
+    if (req.url === '/gemini-upload') {
+      for await (const _chunk of req) {}
+      res.end(JSON.stringify({ file: { name: 'files/test-file', uri: `${mockUrl}/file-data`, mimeType: 'application/pdf' } }))
+      return
+    }
+    if (req.url === '/v1beta/files/test-file' && req.method === 'DELETE') {
+      res.end('{}')
+      return
+    }
     const chunks = []
     for await (const chunk of req) chunks.push(chunk)
     uploads.push({ url: req.url, headers: req.headers, size: Buffer.concat(chunks).length })

@@ -5,7 +5,7 @@ async function authenticatedFetch(endpoint, { method = 'POST', body, headers = {
   if (error) throw error
   if (!data.session?.access_token) throw new Error('Inicia sesión de nuevo para subir archivos.')
   let response
-  const requestId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  const requestId = headers['x-request-id'] || headers['X-Request-ID'] || globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
   try {
     response = await fetch(endpoint, {
       method,

@@ -58,7 +58,7 @@ async function requireSession(req, res, next) {
 
 // Health check for Coolify / load balancers
 app.get('/api/health', (_req, res) => {
-  res.status(200).json({ status: 'ok' })
+  res.status(200).json({ status: 'ok', release: 'ai-budget-async-v2', features: { ai_budget_async: 2 } })
 })
 
 app.post('/api/import-product', requireSession, async (req, res) => {
@@ -420,14 +420,64 @@ function getGenerateContentText(payload) {
   return (payload?.candidates?.[0]?.content?.parts || []).map(part => part?.text || '').join('')
 }
 
-async function requestBudgetAnalysisWithModel(base64, model) {
+async function uploadGeminiFile(file) {
+  const startResponse = await fetch(`${geminiApiBaseUrl}/upload/v1beta/files`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': geminiApiKey,
+      'X-Goog-Upload-Protocol': 'resumable',
+      'X-Goog-Upload-Command': 'start',
+      'X-Goog-Upload-Header-Content-Length': String(file.size),
+      'X-Goog-Upload-Header-Content-Type': 'application/pdf',
+    },
+    signal: AbortSignal.timeout(15000),
+    body: JSON.stringify({ file: { display_name: 'budget.pdf' } }),
+  })
+  if (!startResponse.ok) {
+    const payload = await startResponse.json().catch(() => ({}))
+    const error = new Error(payload?.error?.message || `Gemini rechazó el inicio de la subida (HTTP ${startResponse.status}).`)
+    error.status = startResponse.status
+    throw error
+  }
+  const uploadUrl = startResponse.headers.get('x-goog-upload-url')
+  if (!uploadUrl) throw new Error('Gemini no devolvió una dirección para subir el PDF.')
+  const uploadResponse = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Length': String(file.size),
+      'X-Goog-Upload-Offset': '0',
+      'X-Goog-Upload-Command': 'upload, finalize',
+    },
+    signal: AbortSignal.timeout(45000),
+    body: file.buffer,
+  })
+  const payload = await uploadResponse.json().catch(() => ({}))
+  if (!uploadResponse.ok || !payload?.file?.uri) {
+    const error = new Error(payload?.error?.message || `Gemini no pudo recibir el PDF (HTTP ${uploadResponse.status}).`)
+    error.status = uploadResponse.status
+    throw error
+  }
+  return payload.file
+}
+
+async function deleteGeminiFile(file) {
+  if (!/^files\/[a-zA-Z0-9_-]+$/.test(file?.name || '')) return
+  await fetch(`${geminiApiBaseUrl}/v1beta/${file.name}`, {
+    method: 'DELETE',
+    headers: { 'x-goog-api-key': geminiApiKey },
+    signal: AbortSignal.timeout(10000),
+  }).catch(() => {})
+}
+
+async function requestBudgetAnalysisWithModel(fileUri, model) {
   const response = await fetch(`${geminiApiBaseUrl}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
     signal: AbortSignal.timeout(45000),
     body: JSON.stringify({
       contents: [{ parts: [
-        { inline_data: { mime_type: 'application/pdf', data: base64 } },
+        { file_data: { mime_type: 'application/pdf', file_uri: fileUri } },
         { text: `${budgetAnalysisPrompt}\nDevuelve exclusivamente un objeto JSON válido que cumpla este esquema: ${JSON.stringify(budgetAnalysisSchema)}` },
       ] }],
       generationConfig: { responseMimeType: 'application/json', temperature: 0.1, maxOutputTokens: 8192 },
@@ -451,18 +501,22 @@ async function requestBudgetAnalysisWithModel(base64, model) {
 }
 
 async function requestBudgetAnalysis(file) {
-  const base64 = file.buffer.toString('base64')
-  let lastError
-  for (const model of aiFallbackModels) {
-    try {
-      return await requestBudgetAnalysisWithModel(base64, model)
-    } catch (error) {
-      lastError = error
-      if (error?.status !== 404) throw error
+  const uploadedFile = await uploadGeminiFile(file)
+  try {
+    let lastError
+    for (const model of aiFallbackModels) {
+      try {
+        return await requestBudgetAnalysisWithModel(uploadedFile.uri, model)
+      } catch (error) {
+        lastError = error
+        if (error?.status !== 404) throw error
+      }
     }
+    lastError.triedModels = aiFallbackModels
+    throw lastError
+  } finally {
+    await deleteGeminiFile(uploadedFile)
   }
-  lastError.triedModels = aiFallbackModels
-  throw lastError
 }
 
 function classifyAIError(error) {

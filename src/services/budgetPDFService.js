@@ -81,14 +81,33 @@ export async function uploadPDF(file) {
 }
 
 export async function analyzeBudgetPDF(file) {
+  let health
+  try {
+    const response = await fetch('/api/health', { cache: 'no-store' })
+    health = await response.json()
+  } catch {
+    throw new Error('Fase: comprobación del servidor · No se pudo consultar la versión desplegada.')
+  }
+  if (health?.features?.ai_budget_async !== 2) {
+    throw new Error(`Fase: comprobación del servidor · Coolify está sirviendo una versión anterior (${health?.release || 'sin versión'}). Haz un redeploy sin caché.`)
+  }
   const formData = new FormData()
   formData.append('file', file)
-  const job = await authenticatedRequest('/api/analyze-budget', formData)
+  let job
+  try {
+    job = await authenticatedRequest('/api/analyze-budget', formData)
+  } catch (error) {
+    throw new Error(`Fase: envío del PDF · ${error.message}`)
+  }
   if (!job.job_id) throw new Error(`El servidor no inició el análisis. Diagnóstico: ${job.request_id || 'sin identificador'}`)
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
     await new Promise(resolve => setTimeout(resolve, 1500))
-    const result = await authenticatedGet(`/api/analyze-budget/${encodeURIComponent(job.job_id)}`)
-    if (result.status === 'complete') return result
+    try {
+      const result = await authenticatedGet(`/api/analyze-budget/${encodeURIComponent(job.job_id)}`, { 'x-request-id': job.request_id })
+      if (result.status === 'complete') return result
+    } catch (error) {
+      throw new Error(`Fase: procesamiento del PDF · ${error.message}`)
+    }
   }
   throw new Error(`El análisis sigue tardando más de lo esperado. Diagnóstico: ${job.request_id}`)
 }

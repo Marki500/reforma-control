@@ -11,6 +11,7 @@ const drawings = {
   progress: <><path d="M5 7h4l1.5-2h3L15 7h4v12H5z" /><circle cx="12" cy="13" r="3.5" /></>,
   ideas: <><path d="M9 18h6M10 21h4" /><path d="M8 14.5a7 7 0 1 1 8 0c-1 .8-1 1.5-1 1.5H9s0-.7-1-1.5Z" /></>,
   settings: <><circle cx="12" cy="12" r="3" /><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" /></>,
+  install: <><path d="M12 3v11M8 10l4 4 4-4" /><path d="M5 16v4h14v-4" /></>,
 }
 
 export function AppIcon({ name, size = 20, className = '' }) {

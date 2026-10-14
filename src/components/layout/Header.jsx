@@ -21,7 +21,7 @@ export default function Header({ onMenuToggle, onSearch }) {
   }
 
   return (
-    <header className="relative z-20 flex h-[4.5rem] items-center gap-3 border-b border-stone-200/70 bg-stone-50/80 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
+    <header className="safe-area-header relative z-20 flex h-[4.5rem] items-center gap-3 border-b border-stone-200/70 bg-stone-50/80 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
       <button
         onClick={onMenuToggle}
         aria-label="Abrir navegación"

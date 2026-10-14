@@ -18,6 +18,15 @@ Después del despliegue, comprobar: abrir el PDF existente; subir un PDF y un pl
 
 Validación local: `node --test tests/storage-upload.test.mjs`, `npm run build`.
 
+## Instalar NIVEL en el móvil
+
+NIVEL incluye manifest, service worker e iconos propios, por lo que puede instalarse como PWA después de desplegarla por HTTPS. No necesita una aplicación separada ni publicación en las tiendas.
+
+- Android: abre NIVEL en Chrome y pulsa «Instalar NIVEL» en el menú lateral. También puede aparecer el aviso nativo «Instalar aplicación».
+- iPhone/iPad: abre NIVEL en Safari, pulsa Compartir y elige «Añadir a pantalla de inicio». El botón «Instalar NIVEL» muestra estas instrucciones dentro de la aplicación.
+
+La PWA solo almacena la carcasa visual y recursos estáticos. Las rutas `/api`, las sesiones y los datos de Supabase no se guardan en la caché offline. Para regenerar los iconos desde la marca actual, ejecuta `npm run pwa:icons`.
+
 ## Activar Tareas
 
 Antes de desplegar la versión con Tareas, abre Supabase Studio > SQL Editor y ejecuta únicamente `supabase/migrations/00013_tasks.sql`. La migración crea la tabla, sus índices y permisos por usuario dentro de una transacción. No borra tablas ni datos existentes. Ejecutarla una vez; si ya existe una tabla tasks de otra implementación, comprobar su esquema antes de aplicarla.

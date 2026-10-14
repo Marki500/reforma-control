@@ -1,0 +1,19 @@
+{
+  "name": "NIVEL · Control de obra",
+  "short_name": "NIVEL",
+  "description": "Materiales, presupuestos, tareas y profesionales para mantener tu reforma bajo control.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f0ede5",
+  "theme_color": "#252a23",
+  "lang": "es",
+  "categories": ["productivity", "business", "utilities"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

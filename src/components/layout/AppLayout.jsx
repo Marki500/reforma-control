@@ -8,7 +8,7 @@ export default function AppLayout() {
   const [searchQuery, setSearchQuery] = useState('')
 
   return (
-    <div className="app-shell flex h-screen overflow-hidden bg-stone-100">
+    <div className="app-shell flex h-[100dvh] overflow-hidden bg-stone-100">
       {/* Desktop sidebar */}
       <div className="hidden lg:block">
         <Sidebar />
@@ -34,7 +34,7 @@ export default function AppLayout() {
           onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
           onSearch={setSearchQuery}
         />
-        <main id="main-content" className="flex-1 overflow-y-auto px-4 pb-10 pt-6 sm:px-6 lg:px-8 lg:pt-8">
+        <main id="main-content" className="safe-area-main flex-1 overflow-y-auto px-4 pb-10 pt-6 sm:px-6 lg:px-8 lg:pt-8">
           <Outlet context={{ searchQuery }} />
         </main>
       </div>

@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { AppIcon } from '../brand/AppIcon'
 import { BrandLockup } from '../brand/Brand'
+import InstallApp from '../pwa/InstallApp'
 
 const links = [
   { to: '/dashboard', label: 'Resumen', icon: 'dashboard' },
@@ -18,7 +19,7 @@ const links = [
 
 export default function Sidebar() {
   return (
-    <aside className="flex h-screen w-72 flex-col bg-stone-900 text-white shadow-[12px_0_36px_rgba(37,42,35,0.08)]">
+    <aside className="safe-area-sidebar flex h-[100dvh] w-72 flex-col bg-stone-900 text-white shadow-[12px_0_36px_rgba(37,42,35,0.08)]">
       <div className="px-6 pb-6 pt-7">
         <BrandLockup inverse />
         <div className="mt-6 h-px bg-white/10" />
@@ -47,6 +48,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="border-t border-white/10 px-3 py-4">
+        <InstallApp />
         <NavLink
           to="/settings"
           className={({ isActive }) => `flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm transition-all ${isActive ? 'bg-white text-stone-900' : 'text-white/45 hover:bg-white/[0.07] hover:text-white'}`}

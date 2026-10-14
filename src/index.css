@@ -44,3 +44,14 @@ button:active { transform: translateY(1px); }
 }
 
 ::selection { background: #d86d4d; color: white; }
+
+.safe-area-header {
+  padding-top: env(safe-area-inset-top);
+  height: calc(4.5rem + env(safe-area-inset-top));
+}
+.safe-area-sidebar { padding-bottom: env(safe-area-inset-bottom); }
+.safe-area-main { padding-bottom: max(2.5rem, env(safe-area-inset-bottom)); }
+.safe-area-page {
+  padding-top: max(2.5rem, env(safe-area-inset-top));
+  padding-bottom: max(2.5rem, env(safe-area-inset-bottom));
+}

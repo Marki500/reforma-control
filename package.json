@@ -7,6 +7,7 @@
     "dev": "vite",
     "api": "node server.js",
     "dev:all": "vite & node server.js",
+    "pwa:icons": "node scripts/generate-pwa-icons.mjs",
     "migrate": "node scripts/migrate.mjs",
     "build": "vite build",
     "preview": "vite preview",

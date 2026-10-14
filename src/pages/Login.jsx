@@ -34,7 +34,7 @@ export default function Login() {
   }
 
   return (
-    <main className="grid min-h-screen bg-stone-100 lg:grid-cols-[1.05fr_0.95fr]">
+    <main className="grid min-h-[100dvh] bg-stone-100 lg:grid-cols-[1.05fr_0.95fr]">
       <section className="relative hidden overflow-hidden bg-stone-900 p-12 text-white lg:flex lg:flex-col lg:justify-between">
         <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px)] [background-size:44px_44px]" />
         <div className="absolute -right-24 top-20 h-80 w-80 rounded-full bg-terracotta/20 blur-3xl" />
@@ -47,7 +47,7 @@ export default function Login() {
         <div className="relative z-10 flex items-center gap-3 text-xs text-white/30"><span className="h-px w-10 bg-white/20" /> CONTROL DE OBRA · 2026</div>
       </section>
 
-      <section className="flex items-center justify-center px-5 py-10 sm:px-10">
+      <section className="safe-area-page flex items-center justify-center px-5 py-10 sm:px-10">
         <div className="w-full max-w-md">
           <div className="mb-9 lg:hidden"><BrandLockup /></div>
           <div className="mb-7">

@@ -13,15 +13,17 @@ export default function Inspirations() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [error, setError] = useState('')
 
   async function loadData() {
     setLoading(true)
+    setError('')
     try {
       const [insp, rms] = await Promise.all([getInspirations(), getRooms()])
       setInspirations(insp)
       setRooms(rms)
     } catch (err) {
-      console.error(err)
+      setError(err.message || 'No se pudieron cargar las inspiraciones.')
     } finally {
       setLoading(false)
     }
@@ -51,11 +53,12 @@ export default function Inspirations() {
   async function confirmDeleteInspiration() {
     if (!confirmDelete) return
     try {
-      await deleteInspiration(confirmDelete)
+      await deleteInspiration(inspirations.find(item => item.id === confirmDelete) || { id: confirmDelete })
       setConfirmDelete(null)
       await loadData()
     } catch (err) {
-      console.error(err)
+      setConfirmDelete(null)
+      setError(err.message || 'No se pudo eliminar la inspiración y su archivo.')
     }
   }
 
@@ -73,6 +76,7 @@ export default function Inspirations() {
           Añadir
         </Button>
       </div>
+      {error && <div role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{error} <button type="button" onClick={loadData} className="font-medium underline">Reintentar</button></div>}
 
       {loading ? (
         <div className="flex justify-center py-12">

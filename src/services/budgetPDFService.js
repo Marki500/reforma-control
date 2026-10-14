@@ -1,6 +1,7 @@
 import { authenticatedUpload } from './uploadService'
 import { normalizeStorageRecord } from '../utils/storageUrl'
 import { supabase } from './supabaseClient'
+import { removeStoredFile } from './storageCleanup'
 
 export async function getBudgetPDFs() {
   const { data: user } = await supabase.auth.getUser()
@@ -45,13 +46,20 @@ export async function createBudgetPDF(pdf) {
   return normalizeStorageRecord(data)
 }
 
-export async function deleteBudgetPDF(id) {
+export async function deleteBudgetPDF(pdf) {
+  await removeStoredFile('budget-pdfs', pdf.file_url)
   const { error } = await supabase
     .from('budget_pdfs')
     .delete()
-    .eq('id', id)
+    .eq('id', pdf.id)
 
   if (error) throw error
+}
+
+export async function acceptBudgetPDF(id) {
+  const { data, error } = await supabase.rpc('accept_budget_pdf', { p_budget_id: id })
+  if (error) throw error
+  return data
 }
 
 export async function updateBudgetPDF(id, changes) {

@@ -3,10 +3,10 @@ import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import MobileNav from './MobileNav'
+import OfflineStatus from './OfflineStatus'
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
 
   return (
     <div className="app-shell flex h-[100dvh] overflow-hidden bg-stone-100">
@@ -33,13 +33,13 @@ export default function AppLayout() {
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header
           onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
-          onSearch={setSearchQuery}
         />
         <main id="main-content" className="safe-area-main flex-1 overflow-x-hidden overflow-y-auto px-4 pb-28 pt-5 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10 lg:pt-8">
-          <Outlet context={{ searchQuery }} />
+          <Outlet />
         </main>
       </div>
       <MobileNav onMore={() => setSidebarOpen(true)} />
+      <OfflineStatus />
     </div>
   )
 }

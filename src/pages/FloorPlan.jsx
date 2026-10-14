@@ -8,6 +8,7 @@ import {
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
+import { removeStoredFile } from '../services/storageCleanup'
 import {
   Plus,
   Trash2,
@@ -46,13 +47,15 @@ export default function FloorPlan() {
     if (!file) return
     setOperationError('')
     setUploading(true)
+    let result
     try {
-      const result = await uploadFile(file)
+      result = await uploadFile(file)
       const name = file.name.replace(/\.[^/.]+$/, '')
       await createFloorPlan({ name, image_url: result.url })
       await loadPlans()
       setModalOpen(false)
     } catch (err) {
+      if (result?.url) await removeStoredFile('images', result.url).catch(() => {})
       setOperationError(err.message || 'No se pudo completar la operación.')
       console.error(err)
     } finally {
@@ -67,7 +70,7 @@ export default function FloorPlan() {
   async function confirmDeletePlan() {
     if (!confirmDelete) return
     try {
-      await deleteFloorPlan(confirmDelete.id)
+      await deleteFloorPlan(confirmDelete)
       setConfirmDelete(null)
       await loadPlans()
     } catch (err) {

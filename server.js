@@ -35,6 +35,7 @@ async function requireSession(req, res, next) {
     const user = await response.json()
     if (!user.id) return res.status(401).json({ error: 'Sesión no válida.' })
     req.uploadAuthorization = authorization
+    req.authUser = user
     next()
   } catch {
     res.status(502).json({ error: 'No se pudo conectar con Supabase. Comprueba la configuración del servidor.' })
@@ -395,6 +396,12 @@ const pdfUpload = multer({
   },
 })
 
+const documentUpload = multer({
+  storage,
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => cb(null, ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)),
+})
+
 app.post('/api/upload-file', requireSession, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Archivo requerido o formato no válido' })
 
@@ -456,6 +463,23 @@ app.post('/api/upload-pdf', requireSession, pdfUpload.single('file'), async (req
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Error al subir PDF',
     })
+  }
+})
+
+app.post('/api/upload-document', requireSession, documentUpload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Documento requerido o formato no válido' })
+  try {
+    const extensions = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' }
+    const fileName = `${req.authUser.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}${extensions[req.file.mimetype]}`
+    const uploadRes = await fetch(`${supabaseUrl}/storage/v1/object/home-documents/${fileName}`, {
+      method: 'POST',
+      headers: { 'Authorization': req.uploadAuthorization, 'apikey': supabaseKey, 'Content-Type': req.file.mimetype, 'x-upsert': 'false' },
+      body: req.file.buffer,
+    })
+    if (!uploadRes.ok) throw new Error(await uploadRes.text() || `HTTP ${uploadRes.status}`)
+    res.json({ url: fileName, size: req.file.size })
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Error al subir el documento' })
   }
 })
 

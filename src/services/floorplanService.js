@@ -1,6 +1,7 @@
 import { authenticatedUpload } from './uploadService'
 import { normalizeStorageRecord } from '../utils/storageUrl'
 import { supabase } from './supabaseClient'
+import { removeStoredFile } from './storageCleanup'
 
 export async function getFloorPlans() {
   const { data, error } = await supabase
@@ -48,11 +49,12 @@ export async function updateFloorPlan(id, updates) {
   return normalizeStorageRecord(data)
 }
 
-export async function deleteFloorPlan(id) {
+export async function deleteFloorPlan(plan) {
+  await removeStoredFile('images', plan.image_url)
   const { error } = await supabase
     .from('floor_plans')
     .delete()
-    .eq('id', id)
+    .eq('id', plan.id)
   if (error) throw error
 }
 

@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient'
+import { removeStoredFile } from './storageCleanup'
 
 export async function createMaterial(material) {
   const { data, error } = await supabase
@@ -23,11 +24,12 @@ export async function updateMaterial(id, updates) {
   return data
 }
 
-export async function deleteMaterial(id) {
+export async function deleteMaterial(material) {
+  await removeStoredFile('material-images', material.main_image_url)
   const { error } = await supabase
     .from('materials')
     .delete()
-    .eq('id', id)
+    .eq('id', material.id)
 
   if (error) throw error
 }

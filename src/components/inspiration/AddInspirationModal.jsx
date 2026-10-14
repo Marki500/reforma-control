@@ -5,6 +5,7 @@ import { Input } from '../ui/Input'
 import { Select } from '../ui/Select'
 import { extractFromUrl, uploadImageFromUrl, uploadFile } from '../../services/inspirationsService'
 import { Search, Loader2, ImageOff, Upload, ImageUp } from 'lucide-react'
+import { removeStoredFile } from '../../services/storageCleanup'
 
 export default function AddInspirationModal({
   open,
@@ -22,6 +23,7 @@ export default function AddInspirationModal({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const fileInputRef = useRef()
+  const uploadedUrlRef = useRef(null)
 
   useEffect(() => {
     if (open && editItem) {
@@ -61,6 +63,8 @@ export default function AddInspirationModal({
     setError('')
     try {
       const result = await uploadFile(file)
+      if (uploadedUrlRef.current) await removeStoredFile('images', uploadedUrlRef.current).catch(() => {})
+      uploadedUrlRef.current = result.url
       setImageUrl(result.url)
     } catch (err) {
       setError(err.message || 'Error al subir archivo')
@@ -83,6 +87,7 @@ export default function AddInspirationModal({
           try {
             const uploaded = await uploadImageFromUrl(finalImageUrl)
             finalImageUrl = uploaded.url
+            uploadedUrlRef.current = uploaded.url
           } catch {
             // fallback: keep original URL
           }
@@ -94,6 +99,8 @@ export default function AddInspirationModal({
         image_url: finalImageUrl,
         room_id: roomId || null,
       })
+      if (editItem?.image_url && editItem.image_url !== finalImageUrl) await removeStoredFile('images', editItem.image_url).catch(() => {})
+      uploadedUrlRef.current = null
       handleClose()
     } catch (err) {
       setError(err.message || 'Error al guardar')
@@ -103,6 +110,8 @@ export default function AddInspirationModal({
   }
 
   function handleClose() {
+    if (uploadedUrlRef.current) removeStoredFile('images', uploadedUrlRef.current).catch(() => {})
+    uploadedUrlRef.current = null
     setMode('url')
     setUrl('')
     setTitle('')

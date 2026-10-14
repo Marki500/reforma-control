@@ -10,6 +10,7 @@ import {
   X,
   Building2,
   Pencil,
+  CheckCircle2,
 } from 'lucide-react'
 import {
   getBudgetPDFs,
@@ -17,12 +18,19 @@ import {
   deleteBudgetPDF,
   uploadPDF,
   updateBudgetPDF,
+  acceptBudgetPDF,
 } from '../services/budgetPDFService'
 import { getCategories } from '../services/materialsService'
 import { getSuppliers } from '../services/suppliersService'
 import BudgetPDFViewer from '../components/budget/BudgetPDFViewer'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
+import ConfirmDialog from '../components/ui/ConfirmDialog'
+import { formatCurrency } from '../utils/formatCurrency'
+import { removeStoredFile } from '../services/storageCleanup'
+
+const budgetStatuses = ['Solicitado', 'Recibido', 'Comparando', 'Aceptado', 'Rechazado']
+const emptyMetadata = { name: '', category_id: '', supplier_id: '', notes: '', total_amount: '', issued_date: '', valid_until: '', status: 'Recibido', payment_terms: '', warranty: '' }
 
 export default function BudgetPDFs() {
   const [operationError, setOperationError] = useState('')
@@ -37,9 +45,12 @@ export default function BudgetPDFs() {
   const [uploading, setUploading] = useState(false)
   const [filterCat, setFilterCat] = useState('')
   const [filterSupplier, setFilterSupplier] = useState(() => searchParams.get('supplier') || '')
-  const [uploadForm, setUploadForm] = useState({ file: null, name: '', category_id: '', supplier_id: '', notes: '' })
+  const [filterStatus, setFilterStatus] = useState('')
+  const [uploadForm, setUploadForm] = useState({ file: null, ...emptyMetadata })
   const [editingPdf, setEditingPdf] = useState(null)
-  const [editForm, setEditForm] = useState({ name: '', category_id: '', supplier_id: '', notes: '' })
+  const [editForm, setEditForm] = useState(emptyMetadata)
+  const [accepting, setAccepting] = useState(null)
+  const [deletingPdf, setDeletingPdf] = useState(null)
   const fileRef = useRef()
 
   const load = async () => {
@@ -68,7 +79,7 @@ export default function BudgetPDFs() {
   }
 
   function openUpload() {
-    setUploadForm({ file: null, name: '', category_id: '', supplier_id: '', notes: '' })
+    setUploadForm({ file: null, ...emptyMetadata })
     setUploadOpen(true)
   }
 
@@ -77,8 +88,9 @@ export default function BudgetPDFs() {
     if (!uploadForm.file) { setOperationError('Selecciona un archivo PDF.'); return }
     setOperationError('')
     setUploading(true)
+    let result
     try {
-      const result = await uploadPDF(uploadForm.file)
+      result = await uploadPDF(uploadForm.file)
       await createBudgetPDF({
         name: uploadForm.name.trim() || uploadForm.file.name.replace(/\.pdf$/i, ''),
         file_url: result.url,
@@ -86,10 +98,14 @@ export default function BudgetPDFs() {
         category_id: uploadForm.category_id || null,
         supplier_id: uploadForm.supplier_id || null,
         notes: uploadForm.notes.trim(),
+        total_amount: uploadForm.total_amount === '' ? null : Number(uploadForm.total_amount),
+        issued_date: uploadForm.issued_date || null, valid_until: uploadForm.valid_until || null,
+        status: uploadForm.status, payment_terms: uploadForm.payment_terms.trim(), warranty: uploadForm.warranty.trim(),
       })
       await load()
       setUploadOpen(false)
     } catch (err) {
+      if (result?.url) await removeStoredFile('budget-pdfs', result.url).catch(() => {})
       setOperationError(err.message || 'No se pudo completar la operación.')
       console.error(err)
     } finally {
@@ -97,11 +113,11 @@ export default function BudgetPDFs() {
     }
   }
 
-  async function handleDelete(id) {
-    if (!window.confirm('¿Eliminar este presupuesto?')) return
+  async function handleDelete(pdf) {
     try {
-      await deleteBudgetPDF(id)
-      setPdfs((prev) => prev.filter((p) => p.id !== id))
+      await deleteBudgetPDF(pdf)
+      setPdfs((prev) => prev.filter((p) => p.id !== pdf.id))
+      setDeletingPdf(null)
     } catch (err) {
       setOperationError(err.message || 'No se pudo completar la operación.')
       console.error(err)
@@ -110,7 +126,7 @@ export default function BudgetPDFs() {
 
   function editMetadata(pdf) {
     setEditingPdf(pdf)
-    setEditForm({ name: pdf.name || '', category_id: pdf.category_id || '', supplier_id: pdf.supplier_id || '', notes: pdf.notes || '' })
+    setEditForm({ ...emptyMetadata, name: pdf.name || '', category_id: pdf.category_id || '', supplier_id: pdf.supplier_id || '', notes: pdf.notes || '', total_amount: pdf.total_amount ?? '', issued_date: pdf.issued_date || '', valid_until: pdf.valid_until || '', status: pdf.status || 'Recibido', payment_terms: pdf.payment_terms || '', warranty: pdf.warranty || '' })
   }
 
   async function saveMetadata(event) {
@@ -118,14 +134,22 @@ export default function BudgetPDFs() {
     if (!editingPdf || uploading) return
     setUploading(true); setOperationError('')
     try {
-      const updated = await updateBudgetPDF(editingPdf.id, { name: editForm.name.trim() || 'Presupuesto', category_id: editForm.category_id || null, supplier_id: editForm.supplier_id || null, notes: editForm.notes.trim() })
+      const updated = await updateBudgetPDF(editingPdf.id, { name: editForm.name.trim() || 'Presupuesto', category_id: editForm.category_id || null, supplier_id: editForm.supplier_id || null, notes: editForm.notes.trim(), total_amount: editForm.total_amount === '' ? null : Number(editForm.total_amount), issued_date: editForm.issued_date || null, valid_until: editForm.valid_until || null, status: editForm.status, payment_terms: editForm.payment_terms.trim(), warranty: editForm.warranty.trim() })
       setPdfs(previous => previous.map(pdf => pdf.id === updated.id ? updated : pdf))
       setEditingPdf(null)
     } catch (err) { setOperationError(err.message || 'No se pudo actualizar el presupuesto.') }
     finally { setUploading(false) }
   }
 
-  const filtered = pdfs.filter(pdf => (!filterCat || pdf.category_id === filterCat) && (!filterSupplier || pdf.supplier_id === filterSupplier))
+  async function accept(pdf) {
+    if (accepting) return
+    setAccepting(pdf.id); setOperationError('')
+    try { await acceptBudgetPDF(pdf.id); await load() }
+    catch (err) { setOperationError(err.message || 'No se pudo aceptar el presupuesto.') }
+    finally { setAccepting(null) }
+  }
+
+  const filtered = pdfs.filter(pdf => (!filterCat || pdf.category_id === filterCat) && (!filterSupplier || pdf.supplier_id === filterSupplier) && (!filterStatus || pdf.status === filterStatus))
 
   if (loading) {
     return (
@@ -189,6 +213,9 @@ export default function BudgetPDFs() {
               {suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.trade}</option>)}
             </select>
           </label>
+          <label className="block text-xs font-medium text-stone-500 sm:max-w-sm">Estado
+            <select value={filterStatus} onChange={event => setFilterStatus(event.target.value)} className="mt-1 min-h-[42px] w-full rounded-xl border border-stone-200 bg-stone-50 px-3 text-sm text-stone-700"><option value="">Todos los estados</option>{budgetStatuses.map(status => <option key={status}>{status}</option>)}</select>
+          </label>
         </div>
       )}
 
@@ -244,6 +271,9 @@ export default function BudgetPDFs() {
                   year: 'numeric',
                 })}
               </p>
+              <div className="mb-3 flex flex-wrap items-center gap-2"><span className={`rounded-md px-2 py-1 text-xs font-medium ${pdf.status === 'Aceptado' ? 'bg-green-100 text-green-700' : pdf.status === 'Rechazado' ? 'bg-red-50 text-red-600' : 'bg-stone-100 text-stone-600'}`}>{pdf.status || 'Recibido'}</span>{pdf.total_amount != null && <span className="text-sm font-bold text-stone-800">{formatCurrency(pdf.total_amount)}</span>}{pdf.valid_until && <span className="text-xs text-stone-500">Válido hasta {new Date(`${pdf.valid_until}T12:00:00`).toLocaleDateString('es-ES')}</span>}</div>
+              {pdf.status !== 'Aceptado' && pdf.status !== 'Rechazado' && <button type="button" onClick={() => accept(pdf)} disabled={accepting === pdf.id || !pdf.total_amount} className="mb-3 inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-xl bg-green-700 px-3 text-xs font-medium text-white disabled:opacity-40"><CheckCircle2 size={15} />{accepting === pdf.id ? 'Aceptando…' : 'Aceptar y crear gasto'}</button>}
+              {pdf.expense_id && <button type="button" onClick={() => navigate('/gastos')} className="mb-3 text-xs font-medium text-olive hover:underline">Ver gasto asociado →</button>}
 
               <div className="flex gap-2">
                 <button
@@ -269,7 +299,7 @@ export default function BudgetPDFs() {
                   <Pencil size={14} />
                 </button>
                 <button
-                  onClick={() => handleDelete(pdf.id)}
+                  onClick={() => setDeletingPdf(pdf)}
                   className="flex items-center justify-center gap-1.5 rounded-xl border border-stone-200 px-3 py-2 text-xs font-medium text-stone-400 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-500"
                 >
                   <Trash2 size={14} />
@@ -332,6 +362,8 @@ export default function BudgetPDFs() {
               <label className="block text-sm">Proveedor<select value={uploadForm.supplier_id} onChange={event => setUploadForm(previous => ({ ...previous, supplier_id: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"><option value="">Sin proveedor vinculado</option>{suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.trade}</option>)}</select></label>
               <label className="block text-sm">Categoría<select value={uploadForm.category_id} onChange={event => setUploadForm(previous => ({ ...previous, category_id: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"><option value="">Sin categoría</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
               <label className="block text-sm">Notas<textarea rows={2} value={uploadForm.notes} onChange={event => setUploadForm(previous => ({ ...previous, notes: event.target.value }))} className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" /></label>
+              <div className="grid gap-3 sm:grid-cols-2"><label className="block text-sm">Importe total<input type="number" min="0" step="0.01" value={uploadForm.total_amount} onChange={event => setUploadForm(previous => ({ ...previous, total_amount: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label><label className="block text-sm">Estado<select value={uploadForm.status} onChange={event => setUploadForm(previous => ({ ...previous, status: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm">{budgetStatuses.map(status => <option key={status}>{status}</option>)}</select></label><label className="block text-sm">Fecha de emisión<input type="date" value={uploadForm.issued_date} onChange={event => setUploadForm(previous => ({ ...previous, issued_date: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label><label className="block text-sm">Válido hasta<input type="date" value={uploadForm.valid_until} onChange={event => setUploadForm(previous => ({ ...previous, valid_until: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label></div>
+              <label className="block text-sm">Forma de pago<input value={uploadForm.payment_terms} onChange={event => setUploadForm(previous => ({ ...previous, payment_terms: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label><label className="block text-sm">Garantía<input value={uploadForm.warranty} onChange={event => setUploadForm(previous => ({ ...previous, warranty: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label>
               <button type="submit" disabled={uploading || !uploadForm.file} className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-stone-700 px-4 text-sm font-medium text-white disabled:opacity-50">{uploading && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />}{uploading ? 'Subiendo…' : 'Guardar presupuesto'}</button>
             </div>
           </form>
@@ -345,9 +377,11 @@ export default function BudgetPDFs() {
           <label className="block text-sm">Proveedor<select value={editForm.supplier_id} onChange={event => setEditForm(previous => ({ ...previous, supplier_id: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"><option value="">Sin proveedor vinculado</option>{suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.trade}</option>)}</select></label>
           <label className="block text-sm">Categoría<select value={editForm.category_id} onChange={event => setEditForm(previous => ({ ...previous, category_id: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"><option value="">Sin categoría</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
           <label className="block text-sm">Notas<textarea rows={3} value={editForm.notes} onChange={event => setEditForm(previous => ({ ...previous, notes: event.target.value }))} className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" /></label>
+          <div className="grid gap-3 sm:grid-cols-2"><label className="block text-sm">Importe total<input type="number" min="0" step="0.01" value={editForm.total_amount} onChange={event => setEditForm(previous => ({ ...previous, total_amount: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label><label className="block text-sm">Estado<select value={editForm.status} onChange={event => setEditForm(previous => ({ ...previous, status: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm">{budgetStatuses.map(status => <option key={status}>{status}</option>)}</select></label><label className="block text-sm">Fecha de emisión<input type="date" value={editForm.issued_date} onChange={event => setEditForm(previous => ({ ...previous, issued_date: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label><label className="block text-sm">Válido hasta<input type="date" value={editForm.valid_until} onChange={event => setEditForm(previous => ({ ...previous, valid_until: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label></div><label className="block text-sm">Forma de pago<input value={editForm.payment_terms} onChange={event => setEditForm(previous => ({ ...previous, payment_terms: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label><label className="block text-sm">Garantía<input value={editForm.warranty} onChange={event => setEditForm(previous => ({ ...previous, warranty: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label>
           <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setEditingPdf(null)} disabled={uploading}>Cancelar</Button><Button type="submit" disabled={uploading}>{uploading ? 'Guardando…' : 'Guardar'}</Button></div>
         </form>
       </Modal>
+      <ConfirmDialog open={Boolean(deletingPdf)} title="Eliminar presupuesto" message={`¿Eliminar “${deletingPdf?.name || ''}”? También se borrará el PDF almacenado.`} onCancel={() => setDeletingPdf(null)} onConfirm={() => handleDelete(deletingPdf)} />
     </div>
   )
 }

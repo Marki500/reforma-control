@@ -8,7 +8,8 @@ import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
-import { Plus, Pencil, Trash2, AlertCircle } from 'lucide-react'
+import { Plus, Pencil, Trash2 } from 'lucide-react'
+import DataTools from '../components/settings/DataTools'
 
 const emptyItem = { name: '' }
 
@@ -23,15 +24,17 @@ export default function Settings() {
   const [form, setForm] = useState({ ...emptyItem })
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [error, setError] = useState('')
 
   const loadData = async () => {
     setLoading(true)
+    setError('')
     try {
       const [cats, rms] = await Promise.all([getCategories(), getRooms()])
       setCategories(cats)
       setRooms(rms)
     } catch (err) {
-      console.error(err)
+      setError(err.message || 'No se pudieron cargar los ajustes.')
     } finally {
       setLoading(false)
     }
@@ -57,6 +60,7 @@ export default function Settings() {
     e.preventDefault()
     if (!form.name.trim()) return
     setSaving(true)
+    setError('')
     try {
       if (editing) {
         if (type === 'categories') {
@@ -74,7 +78,7 @@ export default function Settings() {
       setModalOpen(false)
       await loadData()
     } catch (err) {
-      console.error(err)
+      setError(err.message || 'No se pudo guardar el cambio.')
     } finally {
       setSaving(false)
     }
@@ -105,7 +109,8 @@ export default function Settings() {
       setConfirmDelete(null)
       await loadData()
     } catch (err) {
-      console.error(err)
+      setConfirmDelete(null)
+      setError(err.message || 'No se pudo eliminar el elemento.')
     }
   }
 
@@ -132,14 +137,18 @@ export default function Settings() {
                 </div>
                 <div className="flex items-center gap-1">
                   <button
+                    disabled={isDefault}
+                    title={isDefault ? 'Los elementos predeterminados no se pueden modificar' : 'Editar'}
                     onClick={() => openEdit(type, item)}
-                    className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+                    className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600 disabled:cursor-not-allowed disabled:opacity-25"
                   >
                     <Pencil size={15} />
                   </button>
                   <button
+                    disabled={isDefault}
+                    title={isDefault ? 'Los elementos predeterminados no se pueden eliminar' : 'Eliminar'}
                     onClick={() => handleDelete(type, item)}
-                    className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                    className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-25"
                   >
                     <Trash2 size={15} />
                   </button>
@@ -160,6 +169,7 @@ export default function Settings() {
           Gestiona las categorías y estancias disponibles en los filtros
         </p>
       </div>
+      {error && <div role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{error} <button type="button" onClick={loadData} className="font-medium underline">Reintentar</button></div>}
 
       {loading ? (
         <div className="flex justify-center py-12">
@@ -190,6 +200,8 @@ export default function Settings() {
           </section>
         </>
       )}
+
+      <DataTools />
 
       <Modal
         open={modalOpen}

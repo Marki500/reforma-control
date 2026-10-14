@@ -1,6 +1,7 @@
 import { authenticatedRequest, authenticatedUpload } from './uploadService'
 import { normalizeStorageRecord } from '../utils/storageUrl'
 import { supabase } from './supabaseClient'
+import { removeStoredFile } from './storageCleanup'
 
 export async function getInspirations() {
   const { data: user } = await supabase.auth.getUser()
@@ -43,11 +44,12 @@ export async function updateInspiration(id, updates) {
   return normalizeStorageRecord(data)
 }
 
-export async function deleteInspiration(id) {
+export async function deleteInspiration(inspiration) {
+  await removeStoredFile('images', inspiration.image_url)
   const { error } = await supabase
     .from('inspirations')
     .delete()
-    .eq('id', id)
+    .eq('id', inspiration.id)
 
   if (error) throw error
 }

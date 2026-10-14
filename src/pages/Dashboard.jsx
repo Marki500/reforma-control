@@ -11,9 +11,11 @@ import {
   saveDashboardGridCells,
   upsertDashboardGridConfig,
 } from '../services/materialsService'
-import { getBudgetPDFsByCategory, uploadPDF, createBudgetPDF } from '../services/budgetPDFService'
+import { getBudgetPDFs, getBudgetPDFsByCategory, uploadPDF, createBudgetPDF } from '../services/budgetPDFService'
 import BudgetGridConfig from '../components/dashboard/BudgetGridConfig'
 import BudgetPDFViewer from '../components/budget/BudgetPDFViewer'
+import AttentionCenter from '../components/dashboard/AttentionCenter'
+import { removeStoredFile } from '../services/storageCleanup'
 import {
   Package,
   Heart,
@@ -142,14 +144,14 @@ export default function Dashboard() {
 
       // Load PDFs per category
       const pdfMap = {}
-      for (const cell of cells) {
-        if (cell.category_id) {
-          const pdfs = await getBudgetPDFsByCategory(cell.category_id)
-          if (pdfs.length > 0) pdfMap[cell.category_id] = pdfs
-        }
+      const allPdfs = await getBudgetPDFs()
+      for (const pdf of allPdfs) {
+        if (!pdf.category_id) continue
+        ;(pdfMap[pdf.category_id] ||= []).push(pdf)
       }
       setCategoryPDFs(pdfMap)
     } catch (err) {
+      setOperationError(err.message || 'No se pudo cargar el resumen.')
       console.error('Error loading dashboard:', err)
     } finally {
       setLoading(false)
@@ -166,6 +168,7 @@ export default function Dashboard() {
       setBudgets((prev) => ({ ...prev, [categoryId]: amount }))
       setEditingBudget(null)
     } catch (err) {
+      setOperationError(err.message || 'No se pudo guardar el presupuesto.')
       console.error('Error saving budget:', err)
     }
   }
@@ -178,6 +181,7 @@ export default function Dashboard() {
       const updated = await getDashboardGridCells()
       setGridCells(updated)
     } catch (err) {
+      setOperationError(err.message || 'No se pudo guardar la configuración del panel.')
       console.error('Error saving grid:', err)
     }
   }
@@ -186,8 +190,9 @@ export default function Dashboard() {
     if (!file) return
     setOperationError('')
     setUploadingCat(categoryId)
+    let result
     try {
-      const result = await uploadPDF(file)
+      result = await uploadPDF(file)
       const name = file.name.replace(/\.pdf$/i, '')
       await createBudgetPDF({
         name,
@@ -198,6 +203,7 @@ export default function Dashboard() {
       const pdfs = await getBudgetPDFsByCategory(categoryId)
       setCategoryPDFs((prev) => ({ ...prev, [categoryId]: pdfs }))
     } catch (err) {
+      if (result?.url) await removeStoredFile('budget-pdfs', result.url).catch(() => {})
       setOperationError(err.message || 'No se pudo completar la operación.')
       console.error(err)
     } finally {
@@ -265,6 +271,8 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      <AttentionCenter />
 
       {expenseSummary && (
         <button type="button" onClick={() => navigate('/gastos')} className="grid w-full gap-4 rounded-2xl bg-white p-6 text-left shadow-sm transition-shadow hover:shadow-md sm:grid-cols-3">

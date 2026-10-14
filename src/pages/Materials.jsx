@@ -1,6 +1,6 @@
 import { normalizeStorageRecord } from '../utils/storageUrl'
 import { useState, useEffect, useCallback } from 'react'
-import { useSearchParams, useOutletContext } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../services/supabaseClient'
 import {
   createMaterial,
@@ -19,18 +19,20 @@ import ImportFromUrlModal from '../components/materials/ImportFromUrlModal'
 import { Modal } from '../components/ui/Modal'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
 import { Button } from '../components/ui/Button'
+import { removeStoredFile } from '../services/storageCleanup'
 import {
   Package,
   LayoutGrid,
   Table2,
   Plus,
   ExternalLink,
+  Search,
 } from 'lucide-react'
 
 export default function Materials() {
   const [operationError, setOperationError] = useState('')
   const [searchParams, setSearchParams] = useSearchParams()
-  const { searchQuery } = useOutletContext()
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search') || '')
 
   const [materials, setMaterials] = useState([])
   const [categories, setCategories] = useState([])
@@ -91,12 +93,6 @@ export default function Materials() {
     }
   }, [searchParams, setSearchParams])
 
-  // Apply search from header
-  const combinedFilters = { ...filters }
-  if (searchQuery) {
-    combinedFilters.search = searchQuery
-  }
-
   // Filter materials client-side for search
   const filteredMaterials = materials.filter((m) => {
     if (filters.category_id && m.category_id !== filters.category_id) return false
@@ -124,6 +120,7 @@ export default function Materials() {
   async function handleSave(formData, imageFile) {
     setOperationError('')
     setSaving(true)
+    let uploadedImageUrl = null
     try {
       const { data: userData } = await supabase.auth.getUser()
       if (!userData?.user) return
@@ -132,6 +129,7 @@ export default function Materials() {
 
       if (imageFile) {
         mainImageUrl = await uploadImage(imageFile, userData.user.id)
+        uploadedImageUrl = mainImageUrl
       }
 
       const materialPayload = {
@@ -144,6 +142,7 @@ export default function Materials() {
 
       if (editingMaterial?.id) {
         await updateMaterial(editingMaterial.id, materialPayload)
+        if (uploadedImageUrl && editingMaterial.main_image_url !== uploadedImageUrl) await removeStoredFile('material-images', editingMaterial.main_image_url).catch(() => {})
       } else {
         await createMaterial(materialPayload)
       }
@@ -152,6 +151,7 @@ export default function Materials() {
       setEditingMaterial(null)
       await loadData()
     } catch (err) {
+      if (uploadedImageUrl) await removeStoredFile('material-images', uploadedImageUrl).catch(() => {})
       setOperationError(err.message || 'No se pudo guardar el material.')
       console.error('Error saving material:', err)
     } finally {
@@ -166,10 +166,11 @@ export default function Materials() {
   async function confirmDeleteMaterial() {
     if (!confirmDelete) return
     try {
-      await deleteMaterial(confirmDelete.id)
+      await deleteMaterial(confirmDelete)
       setConfirmDelete(null)
       await loadData()
     } catch (err) {
+      setOperationError(err.message || 'No se pudo eliminar el material y su archivo.')
       console.error('Error deleting material:', err)
     }
   }
@@ -182,6 +183,7 @@ export default function Materials() {
         prev.map((m) => (m.id === material.id ? { ...m, count_in_total: newValue } : m))
       )
     } catch (err) {
+      setOperationError(err.message || 'No se pudo actualizar el material.')
       console.error('Error toggling count_in_total:', err)
     }
   }
@@ -268,6 +270,7 @@ export default function Materials() {
           setFilters({ category_id: '', room_id: '', status: '', priority: '' })
         }
       />
+      <div className="relative sm:max-w-md"><Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" /><input type="search" value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Buscar dentro de materiales…" className="min-h-[44px] w-full rounded-xl border border-stone-200 bg-white pl-10 pr-3 text-sm outline-none focus:border-terracotta" /></div>
 
       {/* View toggle */}
       <div className="hidden items-center justify-end gap-1 sm:flex">

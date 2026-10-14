@@ -6,6 +6,7 @@ import { filterProgressPhotos } from '../utils/progressPhotos'
 import { localDateKey } from '../utils/tasks'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
+import { removeStoredFile } from '../services/storageCleanup'
 
 const phases = ['Antes', 'Durante', 'Después']
 const empty = { title: '', phase: 'Durante', taken_date: localDateKey(), room_id: '', notes: '' }
@@ -56,13 +57,14 @@ export default function ProgressPhotos() {
     if (!form.title.trim()) { setFormError('Escribe un título.'); return }
     if (!editing && !file) { setFormError('Selecciona una imagen.'); return }
     setBusy(true); setFormError('')
+    let uploadedImageUrl = null
     try {
       let imageUrl = editing?.image_url
-      if (!editing) imageUrl = (await uploadProgressPhoto(file)).url
+      if (!editing) { imageUrl = (await uploadProgressPhoto(file)).url; uploadedImageUrl = imageUrl }
       const saved = await saveProgressPhoto(editing?.id, form, imageUrl)
       setPhotos(previous => editing ? previous.map(item => item.id === saved.id ? saved : item) : [saved, ...previous])
       setOpen(false)
-    } catch (err) { setFormError(err.message || 'No se pudo guardar la foto.') }
+    } catch (err) { if (uploadedImageUrl) await removeStoredFile('images', uploadedImageUrl).catch(() => {}); setFormError(err.message || 'No se pudo guardar la foto.') }
     finally { setBusy(false) }
   }
 

@@ -1,20 +1,26 @@
+import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
-import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
-import Materials from './pages/Materials'
-import FloorPlan from './pages/FloorPlan'
-import Notes from './pages/Notes'
-import Inspirations from './pages/Inspirations'
-import BudgetPDFs from './pages/BudgetPDFs'
-import Settings from './pages/Settings'
-import Tasks from './pages/Tasks'
-import Expenses from './pages/Expenses'
-import Suppliers from './pages/Suppliers'
-import Calendar from './pages/Calendar'
-import ProgressPhotos from './pages/ProgressPhotos'
-import HomeInfo from './pages/HomeInfo'
-import AppLayout from './components/layout/AppLayout'
+const Login = lazy(() => import('./pages/Login'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Materials = lazy(() => import('./pages/Materials'))
+const FloorPlan = lazy(() => import('./pages/FloorPlan'))
+const Notes = lazy(() => import('./pages/Notes'))
+const Inspirations = lazy(() => import('./pages/Inspirations'))
+const BudgetPDFs = lazy(() => import('./pages/BudgetPDFs'))
+const Settings = lazy(() => import('./pages/Settings'))
+const Tasks = lazy(() => import('./pages/Tasks'))
+const Expenses = lazy(() => import('./pages/Expenses'))
+const Suppliers = lazy(() => import('./pages/Suppliers'))
+const Calendar = lazy(() => import('./pages/Calendar'))
+const ProgressPhotos = lazy(() => import('./pages/ProgressPhotos'))
+const HomeInfo = lazy(() => import('./pages/HomeInfo'))
+const AppLayout = lazy(() => import('./components/layout/AppLayout'))
+const NotFound = lazy(() => import('./pages/NotFound'))
+
+function PageLoader() {
+  return <div className="flex min-h-[45dvh] items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-stone-700" /></div>
+}
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -48,7 +54,7 @@ function PublicRoute({ children }) {
 
 export default function App() {
   return (
-    <Routes>
+    <Suspense fallback={<PageLoader />}><Routes>
       <Route
         path="/login"
         element={
@@ -80,6 +86,7 @@ export default function App() {
         <Route path="calendario" element={<Calendar />} />
         <Route path="progreso" element={<ProgressPhotos />} />
       </Route>
-    </Routes>
+      <Route path="*" element={<NotFound />} />
+    </Routes></Suspense>
   )
 }

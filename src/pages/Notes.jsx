@@ -29,15 +29,17 @@ export default function Notes() {
   const [roomId, setRoomId] = useState('')
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [error, setError] = useState('')
 
   async function loadData() {
     setLoading(true)
+    setError('')
     try {
       const [notesData, roomsData] = await Promise.all([getNotes(), getRooms()])
       setNotes(notesData)
       setRooms(roomsData)
     } catch (err) {
-      console.error(err)
+      setError(err.message || 'No se pudieron cargar las notas.')
     } finally {
       setLoading(false)
     }
@@ -73,6 +75,7 @@ export default function Notes() {
     const text = content.replace(/<[^>]*>/g, '').trim()
     if (!text) return
     setSaving(true)
+    setError('')
     try {
       if (editingId) {
         await updateNote(editingId, { content, category: category || null, room_id: roomId || null })
@@ -82,7 +85,7 @@ export default function Notes() {
       cancelEdit()
       await loadData()
     } catch (err) {
-      console.error(err)
+      setError(err.message || 'No se pudo guardar la nota.')
     } finally {
       setSaving(false)
     }
@@ -99,7 +102,8 @@ export default function Notes() {
       setConfirmDelete(null)
       await loadData()
     } catch (err) {
-      console.error(err)
+      setConfirmDelete(null)
+      setError(err.message || 'No se pudo eliminar la nota.')
     }
   }
 
@@ -119,6 +123,7 @@ export default function Notes() {
           </Button>
         )}
       </div>
+      {error && <div role="alert" className="mb-5 rounded-xl bg-red-50 p-4 text-sm text-red-800">{error} <button type="button" onClick={loadData} className="font-medium underline">Reintentar</button></div>}
 
       {/* Editor */}
       {showForm && (

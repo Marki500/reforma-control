@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url'
 import * as cheerio from 'cheerio'
 import multer from 'multer'
 import { fetchRemote, RemoteFetchError } from './server/remoteFetch.js'
+import { normalizeProductUrl } from './src/utils/productUrl.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const uploadsDir = path.join(__dirname, 'uploads')
@@ -47,7 +48,7 @@ app.get('/api/health', (_req, res) => {
 })
 
 app.post('/api/import-product', requireSession, async (req, res) => {
-  const { url } = req.body
+  const url = normalizeProductUrl(req.body?.url)
 
   if (!url) {
     return res.status(400).json({ error: 'URL requerida' })
@@ -61,23 +62,13 @@ app.post('/api/import-product', requireSession, async (req, res) => {
 
   try {
     const response = await fetchRemote(url, {
-      maxBytes: 2 * 1024 * 1024,
-      timeoutMs: 10000,
+      maxBytes: 5 * 1024 * 1024,
+      timeoutMs: 15000,
       allowedContentTypes: ['text/html', 'application/xhtml+xml'],
       headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        'Accept': 'text/html,application/xhtml+xml',
         'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-        'Referer': 'https://www.google.com/',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Upgrade-Insecure-Requests': '1',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
-        'DNT': '1',
       },
     })
 

@@ -4,6 +4,7 @@ import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Link, Loader2, AlertCircle, CheckCircle } from 'lucide-react'
 import { authenticatedRequest } from '../../services/uploadService'
+import { normalizeProductUrl } from '../../utils/productUrl'
 
 export default function ImportFromUrlModal({ open, onClose, onImport }) {
   const [url, setUrl] = useState('')
@@ -13,12 +14,14 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
 
   async function handleExtract() {
     if (!url) return
+    const normalizedUrl = normalizeProductUrl(url)
+    setUrl(normalizedUrl)
     setLoading(true)
     setError(null)
     setResult(null)
 
     try {
-      const data = await authenticatedRequest('/api/import-product', JSON.stringify({ url }), { 'Content-Type': 'application/json' })
+      const data = await authenticatedRequest('/api/import-product', JSON.stringify({ url: normalizedUrl }), { 'Content-Type': 'application/json' })
       setResult(data)
     } catch (err) {
       setError(err.message || 'No se pudo extraer información de la URL')
@@ -35,11 +38,12 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
   }
 
   function handleManual() {
+    const normalizedUrl = normalizeProductUrl(url)
     let storeName = ''
     try {
-      storeName = new URL(url).hostname.replace('www.', '')
+      storeName = new URL(normalizedUrl).hostname.replace('www.', '')
     } catch {}
-    onImport({ productUrl: url, storeName })
+    onImport({ productUrl: normalizedUrl, storeName })
     handleReset()
   }
 

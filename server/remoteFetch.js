@@ -51,10 +51,10 @@ export function parseRemoteUrl(value) {
   return url
 }
 
-async function resolvePublicAddress(hostname) {
+async function resolvePublicAddresses(hostname) {
   if (net.isIP(hostname)) {
     if (!isPublicIp(hostname)) throw new RemoteFetchError('La dirección apunta a una red interna o reservada.')
-    return { address: hostname, family: net.isIP(hostname) }
+    return [{ address: hostname, family: net.isIP(hostname) }]
   }
   let addresses
   try { addresses = await dns.lookup(hostname, { all: true, verbatim: true }) } catch {
@@ -64,17 +64,24 @@ async function resolvePublicAddress(hostname) {
   if (addresses.some(({ address }) => !isPublicIp(address))) {
     throw new RemoteFetchError('El dominio apunta a una red interna o reservada.')
   }
-  return addresses[0]
+  return addresses
 }
 
-function requestOnce(url, address, { headers, timeoutMs, maxBytes }) {
+export function createPinnedLookup(addresses) {
+  return (_hostname, options, callback) => {
+    if (options?.all) callback(null, addresses)
+    else callback(null, addresses[0].address, addresses[0].family)
+  }
+}
+
+function requestOnce(url, addresses, { headers, timeoutMs, maxBytes }) {
   const client = url.protocol === 'https:' ? https : http
   return new Promise((resolve, reject) => {
     const request = client.request(url, {
       method: 'GET',
       headers: { 'Accept-Encoding': 'identity', ...headers },
       servername: url.hostname,
-      lookup: (_hostname, _options, callback) => callback(null, address.address, address.family),
+      lookup: createPinnedLookup(addresses),
     }, response => {
       const chunks = []
       let size = 0
@@ -93,7 +100,12 @@ function requestOnce(url, address, { headers, timeoutMs, maxBytes }) {
       }))
     })
     request.setTimeout(timeoutMs, () => request.destroy(new RemoteFetchError('La página tardó demasiado en responder.', 504)))
-    request.on('error', error => reject(error instanceof RemoteFetchError ? error : new RemoteFetchError('No se pudo descargar el contenido remoto.', 502)))
+    request.on('error', error => reject(error instanceof RemoteFetchError ? error : new RemoteFetchError(
+      error?.code === 'ECONNRESET'
+        ? 'La tienda cerró la conexión antes de responder. Inténtalo de nuevo.'
+        : 'No se pudo conectar con la tienda.',
+      502,
+    )))
     request.end()
   })
 }
@@ -105,8 +117,8 @@ export async function fetchRemote(value, options = {}) {
   } = options
   let url = parseRemoteUrl(value)
   for (let redirects = 0; redirects <= maxRedirects; redirects += 1) {
-    const address = await resolvePublicAddress(url.hostname)
-    const result = await requestOnce(url, address, { headers, timeoutMs, maxBytes })
+    const addresses = await resolvePublicAddresses(url.hostname)
+    const result = await requestOnce(url, addresses, { headers, timeoutMs, maxBytes })
     if ([301, 302, 303, 307, 308].includes(result.status)) {
       if (redirects === maxRedirects) throw new RemoteFetchError('La URL tiene demasiadas redirecciones.', 502)
       const location = result.headers.location
@@ -118,7 +130,7 @@ export async function fetchRemote(value, options = {}) {
       const message = result.status === 403
         ? 'La tienda bloquea la extracción automática. Introduce los datos manualmente.'
         : `La página respondió con HTTP ${result.status}.`
-      throw new RemoteFetchError(message, 502)
+      throw new RemoteFetchError(message, result.status >= 500 ? 502 : 422)
     }
     const contentType = String(result.headers['content-type'] || '').split(';')[0].trim().toLowerCase()
     if (allowedContentTypes.length && !allowedContentTypes.some(type => contentType === type || contentType.startsWith(`${type}/`))) {

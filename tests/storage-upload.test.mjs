@@ -4,7 +4,8 @@ import http from 'node:http'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { normalizeStorageUrl } from '../src/utils/storageUrl.js'
-import { isPublicIp, parseRemoteUrl, RemoteFetchError } from '../server/remoteFetch.js'
+import { normalizeProductUrl } from '../src/utils/productUrl.js'
+import { createPinnedLookup, isPublicIp, parseRemoteUrl, RemoteFetchError } from '../server/remoteFetch.js'
 
 test('legacy links keep object paths; external links are not rewritten', () => {
   const old = 'https://api-reforma.bycram.dev/storage/v1/object/public/budget-pdfs/a.pdf?download=1#page=2'
@@ -24,6 +25,22 @@ test('remote URL validation rejects internal networks and unsafe protocols', () 
   for (const url of ['file:///etc/passwd', 'ftp://example.com/a', 'https://user:pass@example.com']) {
     assert.throws(() => parseRemoteUrl(url), RemoteFetchError)
   }
+})
+
+test('product URLs are normalized before validation', () => {
+  assert.equal(normalizeProductUrl('  https\\://www\\.example.com/item  '), 'https://www.example.com/item')
+  assert.equal(normalizeProductUrl('www.example.com/item'), 'https://www.example.com/item')
+})
+
+test('pinned DNS lookup supports Node single and multi-address modes', async () => {
+  const addresses = [{ address: '1.1.1.1', family: 4 }, { address: '2606:4700:4700::1111', family: 6 }]
+  const lookup = createPinnedLookup(addresses)
+  await new Promise((resolve, reject) => lookup('example.com', { all: true }, (error, result) => {
+    try { assert.ifError(error); assert.deepEqual(result, addresses); resolve() } catch (assertionError) { reject(assertionError) }
+  }))
+  await new Promise((resolve, reject) => lookup('example.com', {}, (error, address, family) => {
+    try { assert.ifError(error); assert.equal(address, '1.1.1.1'); assert.equal(family, 4); resolve() } catch (assertionError) { reject(assertionError) }
+  }))
 })
 
 test('uploads require a valid user and forward that user to Storage', async () => {

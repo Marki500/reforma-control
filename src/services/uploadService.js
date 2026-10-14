@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient'
 
-export async function authenticatedRequest(endpoint, body, headers = {}) {
+async function authenticatedFetch(endpoint, { method = 'POST', body, headers = {} } = {}) {
   const { data, error } = await supabase.auth.getSession()
   if (error) throw error
   if (!data.session?.access_token) throw new Error('Inicia sesión de nuevo para subir archivos.')
@@ -8,7 +8,7 @@ export async function authenticatedRequest(endpoint, body, headers = {}) {
   const requestId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
   try {
     response = await fetch(endpoint, {
-      method: 'POST',
+      method,
       headers: { ...headers, Authorization: `Bearer ${data.session.access_token}`, 'x-request-id': requestId },
       body,
     })
@@ -26,6 +26,14 @@ export async function authenticatedRequest(endpoint, body, headers = {}) {
   }
   if (!result) throw new Error('El servidor devolvió una respuesta no válida.')
   return result
+}
+
+export async function authenticatedRequest(endpoint, body, headers = {}) {
+  return authenticatedFetch(endpoint, { method: 'POST', body, headers })
+}
+
+export async function authenticatedGet(endpoint, headers = {}) {
+  return authenticatedFetch(endpoint, { method: 'GET', headers })
 }
 
 export async function authenticatedUpload(endpoint, body, headers = {}) {

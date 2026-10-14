@@ -54,6 +54,11 @@ test('uploads require a valid user and forward that user to Storage', async () =
       res.end(JSON.stringify(valid ? { id: 'test-user' } : { error: 'Invalid token' }))
       return
     }
+    if (req.url.includes(':generateContent')) {
+      for await (const _chunk of req) {}
+      res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ is_budget: true, document_title: 'Presupuesto de prueba', supplier_name: '', quote_number: '', issued_date: '', valid_until: '', suggested_category: '', subtotal: 100, tax_rate: 21, tax_amount: 21, total_amount: 121, payment_terms: '', warranty: '', notes: '', line_items: [], warnings: [] }) }] } }] }))
+      return
+    }
     const chunks = []
     for await (const chunk of req) chunks.push(chunk)
     uploads.push({ url: req.url, headers: req.headers, size: Buffer.concat(chunks).length })
@@ -69,7 +74,7 @@ test('uploads require a valid user and forward that user to Storage', async () =
   await new Promise(resolve => reservation.close(resolve))
   const child = spawn(process.execPath, ['server.js'], {
     cwd: new URL('..', import.meta.url),
-    env: { ...process.env, PORT: String(port), SUPABASE_URL: mockUrl, SUPABASE_ANON_KEY: 'test-anon-key' },
+    env: { ...process.env, PORT: String(port), SUPABASE_URL: mockUrl, SUPABASE_ANON_KEY: 'test-anon-key', GEMINI_API_KEY: 'test-gemini-key', GEMINI_API_BASE_URL: mockUrl, AI_MODEL: 'gemini-3.8-flash' },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   let log = ''
@@ -110,6 +115,20 @@ test('uploads require a valid user and forward that user to Storage', async () =
       assert.equal(response.status, 200, await response.clone().text())
       assert.ok((await response.json()).url.startsWith(`${mockUrl}/storage/v1/object/public/${bucket}/`))
     }
+    const analysisBody = new FormData()
+    analysisBody.append('file', new Blob(['test-only-content'], { type: 'application/pdf' }), 'quote.pdf')
+    const startedAnalysis = await fetch(`${base}/api/analyze-budget`, { method: 'POST', headers: { Authorization: 'Bearer test-user-token' }, body: analysisBody })
+    assert.equal(startedAnalysis.status, 202)
+    const analysisJob = await startedAnalysis.json()
+    let analysisResult
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const response = await fetch(`${base}/api/analyze-budget/${analysisJob.job_id}`, { headers: { Authorization: 'Bearer test-user-token' } })
+      analysisResult = await response.json()
+      if (response.status === 200) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    assert.equal(analysisResult.status, 'complete')
+    assert.equal(analysisResult.draft.total_amount, 121)
     assert.equal(uploads.length, 2)
     for (const upload of uploads) {
       assert.equal(upload.headers.authorization, 'Bearer test-user-token')

@@ -30,9 +30,11 @@ app.use((req, res, next) => {
 const supabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://api-reforma.noxumlab.com').replace(/\/$/, '')
 const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
 const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || ''
+const geminiApiBaseUrl = (process.env.GEMINI_API_BASE_URL || 'https://generativelanguage.googleapis.com').replace(/\/$/, '')
 const aiModel = process.env.AI_MODEL || 'gemini-3.8-flash'
 const aiFallbackModels = [...new Set([aiModel, 'gemini-3.8-flash', 'gemini-3.6-flash'])]
 const aiRequestTimes = new Map()
+const aiAnalysisJobs = new Map()
 
 async function requireSession(req, res, next) {
   const authorization = req.get('Authorization')
@@ -419,7 +421,7 @@ function getGenerateContentText(payload) {
 }
 
 async function requestBudgetAnalysisWithModel(base64, model) {
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+  const response = await fetch(`${geminiApiBaseUrl}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
     signal: AbortSignal.timeout(45000),
@@ -477,8 +479,21 @@ function classifyAIError(error) {
   return { status: 502, code: 'AI_UNKNOWN', message: 'No se pudo completar el análisis con IA.' }
 }
 
-app.post('/api/analyze-budget', requireSession, pdfUpload.single('file'), async (req, res) => {
+async function runBudgetAnalysisJob(jobId, file, diagnostic) {
   const startedAt = Date.now()
+  console.info('[AI budget analysis:start]', { ...diagnostic, bytes: file.size })
+  try {
+    const { draft, model } = await requestBudgetAnalysis(file)
+    aiAnalysisJobs.set(jobId, { ...aiAnalysisJobs.get(jobId), status: 'complete', draft, model })
+    console.info('[AI budget analysis:success]', { ...diagnostic, selectedModel: model, durationMs: Date.now() - startedAt, lineItems: draft.line_items.length })
+  } catch (error) {
+    const classified = classifyAIError(error)
+    aiAnalysisJobs.set(jobId, { ...aiAnalysisJobs.get(jobId), status: 'error', failure: classified })
+    console.error('[AI budget analysis:error]', { ...diagnostic, durationMs: Date.now() - startedAt, code: classified.code, providerStatus: error?.status || null, providerMessage: error?.message || 'Unknown error' })
+  }
+}
+
+app.post('/api/analyze-budget', requireSession, pdfUpload.single('file'), (req, res) => {
   const diagnostic = { requestId: req.requestId, userId: req.authUser.id, model: aiModel }
   if (!req.file) return res.status(400).json({ error: 'Selecciona un archivo PDF válido.', code: 'INVALID_PDF', request_id: req.requestId })
   if (!geminiApiKey) return res.status(503).json({ error: 'La IA todavía no está configurada en el servidor.', code: 'AI_NOT_CONFIGURED', request_id: req.requestId })
@@ -494,16 +509,22 @@ app.post('/api/analyze-budget', requireSession, pdfUpload.single('file'), async 
     for (const [id, time] of aiRequestTimes) if (now - time > 60 * 60 * 1000) aiRequestTimes.delete(id)
   }
 
-  console.info('[AI budget analysis:start]', { ...diagnostic, bytes: req.file.size })
-  try {
-    const { draft, model } = await requestBudgetAnalysis(req.file)
-    console.info('[AI budget analysis:success]', { ...diagnostic, selectedModel: model, durationMs: Date.now() - startedAt, lineItems: draft.line_items.length })
-    res.json({ draft, model, request_id: req.requestId })
-  } catch (error) {
-    const classified = classifyAIError(error)
-    console.error('[AI budget analysis:error]', { ...diagnostic, durationMs: Date.now() - startedAt, code: classified.code, providerStatus: error?.status || null, providerMessage: error?.message || 'Unknown error' })
-    res.status(classified.status).json({ error: classified.message, code: classified.code, request_id: req.requestId })
+  const jobId = randomUUID()
+  aiAnalysisJobs.set(jobId, { userId, requestId: req.requestId, status: 'processing', createdAt: now })
+  res.status(202).json({ status: 'processing', job_id: jobId, request_id: req.requestId })
+  setImmediate(() => runBudgetAnalysisJob(jobId, req.file, diagnostic))
+  const cleanup = setTimeout(() => aiAnalysisJobs.delete(jobId), 10 * 60 * 1000)
+  cleanup.unref?.()
+})
+
+app.get('/api/analyze-budget/:jobId', requireSession, (req, res) => {
+  const job = aiAnalysisJobs.get(req.params.jobId)
+  if (!job || job.userId !== req.authUser.id) {
+    return res.status(404).json({ error: 'El análisis ya no está disponible. Vuelve a enviar el PDF.', code: 'AI_JOB_NOT_FOUND', request_id: req.requestId })
   }
+  if (job.status === 'processing') return res.status(202).json({ status: 'processing', request_id: job.requestId })
+  if (job.status === 'error') return res.status(job.failure.status).json({ error: job.failure.message, code: job.failure.code, request_id: job.requestId })
+  return res.json({ status: 'complete', draft: job.draft, model: job.model, request_id: job.requestId })
 })
 
 app.post('/api/upload-file', requireSession, upload.single('file'), async (req, res) => {

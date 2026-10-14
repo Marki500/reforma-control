@@ -1,4 +1,4 @@
-import { authenticatedRequest, authenticatedUpload } from './uploadService'
+import { authenticatedGet, authenticatedRequest, authenticatedUpload } from './uploadService'
 import { normalizeStorageRecord } from '../utils/storageUrl'
 import { supabase } from './supabaseClient'
 import { removeStoredFile } from './storageCleanup'
@@ -83,5 +83,12 @@ export async function uploadPDF(file) {
 export async function analyzeBudgetPDF(file) {
   const formData = new FormData()
   formData.append('file', file)
-  return authenticatedRequest('/api/analyze-budget', formData)
+  const job = await authenticatedRequest('/api/analyze-budget', formData)
+  if (!job.job_id) throw new Error(`El servidor no inició el análisis. Diagnóstico: ${job.request_id || 'sin identificador'}`)
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    await new Promise(resolve => setTimeout(resolve, 1500))
+    const result = await authenticatedGet(`/api/analyze-budget/${encodeURIComponent(job.job_id)}`)
+    if (result.status === 'complete') return result
+  }
+  throw new Error(`El análisis sigue tardando más de lo esperado. Diagnóstico: ${job.request_id}`)
 }

@@ -226,10 +226,11 @@ export default function Dashboard() {
     <div className="mx-auto max-w-6xl space-y-8">
       {operationError && <div role="alert" className="fixed bottom-4 left-4 right-4 z-[100] rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 shadow-lg">{operationError}<button type="button" onClick={() => setOperationError('')} className="ml-3 font-semibold underline">Cerrar</button></div>}
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-stone-800">Dashboard</h1>
-          <p className="mt-1 text-sm text-stone-500">Control general de tu reforma</p>
+          <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-terracotta">Vista general</p>
+          <h1 className="font-display text-3xl font-bold tracking-[-0.035em] text-stone-900 sm:text-4xl">Resumen de obra</h1>
+          <p className="mt-2 text-sm text-stone-500">Decisiones, costes y próximos pasos en orden.</p>
         </div>
          <div className="flex items-center gap-2 sm:gap-3">
           <button
@@ -250,14 +251,15 @@ export default function Dashboard() {
       </div>
 
       {/* Coste total */}
-      <div className="rounded-2xl bg-white p-6 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="rounded-xl bg-olive-light p-3">
-            <TrendingUp size={24} className="text-olive" />
+      <div className="relative overflow-hidden rounded-[1.4rem] bg-stone-900 p-6 text-white shadow-[0_20px_55px_rgba(37,42,35,0.16)] sm:p-8">
+        <div className="absolute -right-12 -top-20 h-52 w-52 rounded-full bg-terracotta/20 blur-3xl" />
+        <div className="relative flex items-center gap-4">
+          <div className="rounded-xl bg-white/10 p-3 ring-1 ring-white/10">
+            <TrendingUp size={24} className="text-terracotta" />
           </div>
           <div>
-            <p className="text-sm text-stone-500">Coste total estimado</p>
-            <p className="text-3xl font-bold text-stone-800">
+            <p className="text-xs font-medium uppercase tracking-[0.12em] text-white/45">Coste total estimado</p>
+            <p className="mt-1 font-display text-4xl font-bold tracking-[-0.04em] text-white">
               {formatCurrency(stats.totalCost)}
             </p>
           </div>
@@ -310,12 +312,12 @@ export default function Dashboard() {
           return (
             <div
               key={card.label}
-              className="rounded-2xl bg-white p-4 shadow-sm transition-all hover:shadow-md"
+              className="rounded-2xl bg-white/90 p-4 shadow-[0_8px_28px_rgba(37,42,35,0.055)] ring-1 ring-stone-200/60 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_32px_rgba(37,42,35,0.09)]"
             >
               <div className={`mb-3 inline-flex rounded-xl p-2 ${card.color}`}>
                 <Icon size={18} />
               </div>
-              <p className="text-2xl font-bold text-stone-800">{card.value}</p>
+              <p className="font-display text-2xl font-bold tabular-nums text-stone-900">{card.value}</p>
               <p className="text-xs text-stone-500">{card.label}</p>
             </div>
           )

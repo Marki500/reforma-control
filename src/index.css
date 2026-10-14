@@ -2,28 +2,45 @@
 @plugin "@tailwindcss/typography";
 
 @theme {
-  --color-stone-50: #faf8f5;
-  --color-stone-100: #f5f0eb;
-  --color-stone-200: #ebe3d9;
-  --color-stone-300: #d6cbbd;
-  --color-stone-400: #b8a992;
-  --color-stone-500: #9c8b73;
-  --color-stone-600: #8b7355;
-  --color-stone-700: #6b5a42;
-  --color-stone-800: #4a3f30;
-  --color-stone-900: #3a3227;
+  --color-stone-50: #f7f5ef;
+  --color-stone-100: #f0ede5;
+  --color-stone-200: #e3dfd5;
+  --color-stone-300: #cec8ba;
+  --color-stone-400: #a8a193;
+  --color-stone-500: #777568;
+  --color-stone-600: #5d6155;
+  --color-stone-700: #42483e;
+  --color-stone-800: #30352d;
+  --color-stone-900: #252a23;
 
-  --color-olive: #7a8a6e;
-  --color-olive-light: #e8efe2;
-  --color-terracotta: #c57a6b;
-  --color-terracotta-light: #f5e6e2;
-  --color-gold: #d4a853;
-  --color-gold-light: #faf2e1;
+  --color-olive: #68765d;
+  --color-olive-light: #e5eadf;
+  --color-terracotta: #d86d4d;
+  --color-terracotta-light: #f6e3dc;
+  --color-gold: #b98b3d;
+  --color-gold-light: #f4ead7;
   --color-amber: #d9a84a;
   --color-amber-light: #fdf5e6;
   --color-slate: #64748b;
   --color-slate-light: #f1f5f9;
 
-  --font-sans: "Inter", "Manrope", "DM Sans", system-ui, sans-serif;
-  --font-serif: "Playfair Display", "Cormorant Garamond", serif;
+  --font-sans: "Aptos", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Arial Narrow", "Aptos Display", "Segoe UI Variable Display", sans-serif;
+  --font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
 }
+
+html { scroll-behavior: smooth; }
+body { background: #f0ede5; }
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+button:active { transform: translateY(1px); }
+
+.app-shell {
+  background-color: #f0ede5;
+  background-image:
+    radial-gradient(circle at 78% -10%, rgba(216, 109, 77, 0.08), transparent 28rem),
+    linear-gradient(rgba(66, 72, 62, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(66, 72, 62, 0.025) 1px, transparent 1px);
+  background-size: auto, 32px 32px, 32px 32px;
+}
+
+::selection { background: #d86d4d; color: white; }

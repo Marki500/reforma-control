@@ -1,87 +1,60 @@
 import { NavLink } from 'react-router-dom'
-import {
-  LayoutDashboard,
-  Package,
-  Receipt,
-  FileText,
-  Users,
-  CheckSquare,
-  Lightbulb,
-  Image as FloorPlanIcon,
-  StickyNote,
-  Settings,
-  CalendarDays,
-  Camera,
-} from 'lucide-react'
+import { AppIcon } from '../brand/AppIcon'
+import { BrandLockup } from '../brand/Brand'
 
 const links = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/materials', label: 'Materiales', icon: Package },
-  { to: '/planos', label: 'Planos', icon: FloorPlanIcon },
-  { to: '/notas', label: 'Notas', icon: StickyNote },
-  { to: '/presupuestos', label: 'Presupuestos', icon: FileText },
-  { to: '/gastos', label: 'Gastos', icon: Receipt },
-  { to: '/proveedores', label: 'Proveedores', icon: Users },
-  { to: '/tareas', label: 'Tareas', icon: CheckSquare },
-  { to: '/calendario', label: 'Calendario', icon: CalendarDays },
-  { to: '/progreso', label: 'Progreso', icon: Camera },
-  { to: '/inspiracion', label: 'Inspiración', icon: Lightbulb },
+  { to: '/dashboard', label: 'Resumen', icon: 'dashboard' },
+  { to: '/materials', label: 'Materiales', icon: 'materials' },
+  { to: '/planos', label: 'Planos', icon: 'plans' },
+  { to: '/notas', label: 'Notas', icon: 'notes' },
+  { to: '/presupuestos', label: 'Presupuestos', icon: 'budgets' },
+  { to: '/gastos', label: 'Gastos', icon: 'expenses' },
+  { to: '/proveedores', label: 'Proveedores', icon: 'suppliers' },
+  { to: '/tareas', label: 'Tareas', icon: 'tasks' },
+  { to: '/calendario', label: 'Calendario', icon: 'calendar' },
+  { to: '/progreso', label: 'Progreso', icon: 'progress' },
+  { to: '/inspiracion', label: 'Inspiración', icon: 'ideas' },
 ]
 
 export default function Sidebar() {
   return (
-    <aside className="flex h-screen w-64 flex-col border-r border-stone-200 bg-white">
-      <div className="flex items-center gap-3 border-b border-stone-200 px-6 py-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-stone-700 text-sm font-bold text-white">
-          R
-        </div>
-        <div>
-          <h1 className="text-sm font-semibold text-stone-800">Reforma</h1>
-          <p className="text-xs text-stone-400">Control App</p>
-        </div>
+    <aside className="flex h-screen w-72 flex-col bg-stone-900 text-white shadow-[12px_0_36px_rgba(37,42,35,0.08)]">
+      <div className="px-6 pb-6 pt-7">
+        <BrandLockup inverse />
+        <div className="mt-6 h-px bg-white/10" />
+        <p className="mt-4 text-[0.66rem] font-semibold uppercase tracking-[0.18em] text-white/35">Tu proyecto</p>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3 py-4">
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
         {links.map((link) => {
-          const Icon = link.icon
-          if (link.disabled) {
-            return (
-              <div
-                key={link.to}
-                className="flex cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-stone-300"
-              >
-                <Icon size={18} />
-                <span>{link.label}</span>
-              </div>
-            )
-          }
           return (
             <NavLink
               key={link.to}
               to={link.to}
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-200 ${
+                `group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 ${
                   isActive
-                    ? 'bg-stone-100 text-stone-800'
-                    : 'text-stone-500 hover:bg-stone-50 hover:text-stone-700'
+                    ? 'bg-white text-stone-900 shadow-[0_8px_24px_rgba(0,0,0,0.12)]'
+                    : 'text-white/55 hover:bg-white/[0.07] hover:text-white'
                 }`
               }
             >
-              <Icon size={18} />
+              <AppIcon name={link.icon} size={19} />
               <span>{link.label}</span>
             </NavLink>
           )
         })}
       </nav>
 
-      <div className="border-t border-stone-200 px-3 py-4">
+      <div className="border-t border-white/10 px-3 py-4">
         <NavLink
           to="/settings"
-          className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-stone-500 transition-colors hover:bg-stone-50 hover:text-stone-700"
+          className={({ isActive }) => `flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm transition-all ${isActive ? 'bg-white text-stone-900' : 'text-white/45 hover:bg-white/[0.07] hover:text-white'}`}
         >
-          <Settings size={18} />
+          <AppIcon name="settings" size={19} />
           <span>Ajustes</span>
         </NavLink>
+        <p className="px-3.5 pt-4 text-[0.62rem] tracking-[0.12em] text-white/20">NIVEL · 2026</p>
       </div>
     </aside>
   )

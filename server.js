@@ -6,8 +6,7 @@ import fs from 'fs/promises'
 import { fileURLToPath } from 'url'
 import * as cheerio from 'cheerio'
 import multer from 'multer'
-import { fetchRemote, RemoteFetchError } from './server/remoteFetch.js'
-import { normalizeProductUrl } from './src/utils/productUrl.js'
+import { fetchRemote, normalizeRemoteUrl, RemoteFetchError } from './server/remoteFetch.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const uploadsDir = path.join(__dirname, 'uploads')
@@ -48,7 +47,7 @@ app.get('/api/health', (_req, res) => {
 })
 
 app.post('/api/import-product', requireSession, async (req, res) => {
-  const url = normalizeProductUrl(req.body?.url)
+  const url = normalizeRemoteUrl(req.body?.url)
 
   if (!url) {
     return res.status(400).json({ error: 'URL requerida' })

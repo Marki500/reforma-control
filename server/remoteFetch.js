@@ -11,6 +11,13 @@ export class RemoteFetchError extends Error {
   }
 }
 
+export function normalizeRemoteUrl(value) {
+  let url = String(value || '').trim()
+  url = url.replace(/^['"<]+|['">]+$/g, '').replaceAll('\\', '')
+  if (/^www\./i.test(url)) url = `https://${url}`
+  return url
+}
+
 function ipv4Number(address) {
   return address.split('.').reduce((value, part) => (value * 256) + Number(part), 0) >>> 0
 }
@@ -44,7 +51,7 @@ export function isPublicIp(address) {
 
 export function parseRemoteUrl(value) {
   let url
-  try { url = new URL(value) } catch { throw new RemoteFetchError('URL inválida.') }
+  try { url = new URL(normalizeRemoteUrl(value)) } catch { throw new RemoteFetchError('URL inválida.') }
   if (!['http:', 'https:'].includes(url.protocol)) throw new RemoteFetchError('Solo se permiten direcciones http o https.')
   if (url.username || url.password) throw new RemoteFetchError('La URL no puede incluir credenciales.')
   if (!url.hostname) throw new RemoteFetchError('URL inválida.')

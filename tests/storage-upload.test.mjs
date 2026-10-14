@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { normalizeStorageUrl } from '../src/utils/storageUrl.js'
 import { normalizeProductUrl } from '../src/utils/productUrl.js'
-import { createPinnedLookup, isPublicIp, parseRemoteUrl, RemoteFetchError } from '../server/remoteFetch.js'
+import { createPinnedLookup, isPublicIp, normalizeRemoteUrl, parseRemoteUrl, RemoteFetchError } from '../server/remoteFetch.js'
 
 test('legacy links keep object paths; external links are not rewritten', () => {
   const old = 'https://api-reforma.bycram.dev/storage/v1/object/public/budget-pdfs/a.pdf?download=1#page=2'
@@ -30,6 +30,7 @@ test('remote URL validation rejects internal networks and unsafe protocols', () 
 test('product URLs are normalized before validation', () => {
   assert.equal(normalizeProductUrl('  https\\://www\\.example.com/item  '), 'https://www.example.com/item')
   assert.equal(normalizeProductUrl('www.example.com/item'), 'https://www.example.com/item')
+  assert.equal(normalizeRemoteUrl('  https\\://www\\.example.com/item  '), 'https://www.example.com/item')
 })
 
 test('pinned DNS lookup supports Node single and multi-address modes', async () => {

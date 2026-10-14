@@ -58,7 +58,7 @@ async function requireSession(req, res, next) {
 
 // Health check for Coolify / load balancers
 app.get('/api/health', (_req, res) => {
-  res.status(200).json({ status: 'ok', release: 'ai-budget-async-v2', features: { ai_budget_async: 2 } })
+  res.status(200).json({ status: 'ok', release: 'ai-budget-async-v3', features: { ai_budget_async: 3 } })
 })
 
 app.post('/api/import-product', requireSession, async (req, res) => {
@@ -564,16 +564,17 @@ app.post('/api/analyze-budget', requireSession, pdfUpload.single('file'), (req, 
   }
 
   const jobId = randomUUID()
-  aiAnalysisJobs.set(jobId, { userId, requestId: req.requestId, status: 'processing', createdAt: now })
-  res.status(202).json({ status: 'processing', job_id: jobId, request_id: req.requestId })
+  const pollToken = randomUUID()
+  aiAnalysisJobs.set(jobId, { userId, pollToken, requestId: req.requestId, status: 'processing', createdAt: now })
+  res.status(202).json({ status: 'processing', job_id: jobId, poll_token: pollToken, request_id: req.requestId })
   setImmediate(() => runBudgetAnalysisJob(jobId, req.file, diagnostic))
   const cleanup = setTimeout(() => aiAnalysisJobs.delete(jobId), 10 * 60 * 1000)
   cleanup.unref?.()
 })
 
-app.get('/api/analyze-budget/:jobId', requireSession, (req, res) => {
+app.get('/api/analyze-budget/:jobId', (req, res) => {
   const job = aiAnalysisJobs.get(req.params.jobId)
-  if (!job || job.userId !== req.authUser.id) {
+  if (!job || job.pollToken !== req.get('x-analysis-token')) {
     return res.status(404).json({ error: 'El análisis ya no está disponible. Vuelve a enviar el PDF.', code: 'AI_JOB_NOT_FOUND', request_id: req.requestId })
   }
   if (job.status === 'processing') return res.status(202).json({ status: 'processing', request_id: job.requestId })

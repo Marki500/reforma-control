@@ -137,7 +137,7 @@ test('uploads require a valid user and forward that user to Storage', async () =
     const analysisJob = await startedAnalysis.json()
     let analysisResult
     for (let attempt = 0; attempt < 20; attempt += 1) {
-      const response = await fetch(`${base}/api/analyze-budget/${analysisJob.job_id}`, { headers: { Authorization: 'Bearer test-user-token' } })
+      const response = await fetch(`${base}/api/analyze-budget/${analysisJob.job_id}`, { headers: { 'x-analysis-token': analysisJob.poll_token } })
       analysisResult = await response.json()
       if (response.status === 200) break
       await new Promise(resolve => setTimeout(resolve, 25))

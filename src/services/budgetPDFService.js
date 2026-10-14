@@ -88,7 +88,7 @@ export async function analyzeBudgetPDF(file) {
   } catch {
     throw new Error('Fase: comprobación del servidor · No se pudo consultar la versión desplegada.')
   }
-  if (health?.features?.ai_budget_async !== 2) {
+  if (health?.features?.ai_budget_async !== 3) {
     throw new Error(`Fase: comprobación del servidor · Coolify está sirviendo una versión anterior (${health?.release || 'sin versión'}). Haz un redeploy sin caché.`)
   }
   const formData = new FormData()
@@ -99,13 +99,19 @@ export async function analyzeBudgetPDF(file) {
   } catch (error) {
     throw new Error(`Fase: envío del PDF · ${error.message}`)
   }
-  if (!job.job_id) throw new Error(`El servidor no inició el análisis. Diagnóstico: ${job.request_id || 'sin identificador'}`)
+  if (!job.job_id || !job.poll_token) throw new Error(`El servidor no inició el análisis. Diagnóstico: ${job.request_id || 'sin identificador'}`)
+  let transientFailures = 0
   for (let attempt = 0; attempt < 120; attempt += 1) {
     await new Promise(resolve => setTimeout(resolve, 1500))
     try {
-      const result = await authenticatedGet(`/api/analyze-budget/${encodeURIComponent(job.job_id)}`, { 'x-request-id': job.request_id })
+      const result = await authenticatedGet(`/api/analyze-budget/${encodeURIComponent(job.job_id)}`, { 'x-request-id': job.request_id, 'x-analysis-token': job.poll_token })
       if (result.status === 'complete') return result
+      transientFailures = 0
     } catch (error) {
+      if (/proxy tardó|No se pudo conectar con el servidor/i.test(error.message) && transientFailures < 4) {
+        transientFailures += 1
+        continue
+      }
       throw new Error(`Fase: procesamiento del PDF · ${error.message}`)
     }
   }

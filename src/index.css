@@ -50,8 +50,20 @@ button:active { transform: translateY(1px); }
   height: calc(4.5rem + env(safe-area-inset-top));
 }
 .safe-area-sidebar { padding-bottom: env(safe-area-inset-bottom); }
-.safe-area-main { padding-bottom: max(2.5rem, env(safe-area-inset-bottom)); }
+.safe-area-main { padding-bottom: max(7rem, calc(5.75rem + env(safe-area-inset-bottom))); }
+.mobile-bottom-nav { padding-bottom: env(safe-area-inset-bottom); }
 .safe-area-page {
   padding-top: max(2.5rem, env(safe-area-inset-top));
   padding-bottom: max(2.5rem, env(safe-area-inset-bottom));
+}
+
+.budget-visual-grid { grid-template-columns: 1fr; }
+
+@media (min-width: 640px) {
+  .budget-visual-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (min-width: 1024px) {
+  .safe-area-main { padding-bottom: max(2.5rem, env(safe-area-inset-bottom)); }
+  .budget-visual-grid { grid-template-columns: repeat(var(--budget-columns, 3), minmax(0, 1fr)); }
 }

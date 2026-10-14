@@ -94,9 +94,9 @@ export default function BudgetPDFs() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8">
+    <div className="mx-auto max-w-6xl space-y-5 sm:space-y-8">
       {operationError && <div role="alert" className="fixed bottom-4 left-4 right-4 z-[100] rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 shadow-lg">{operationError}<button type="button" onClick={() => setOperationError('')} className="ml-3 font-semibold underline">Cerrar</button></div>}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-stone-800">
             Presupuestos recibidos
@@ -107,7 +107,7 @@ export default function BudgetPDFs() {
         </div>
         <button
           onClick={() => setUploadOpen(true)}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-stone-700 px-4 py-2 text-sm font-medium text-white transition-all hover:bg-stone-800"
+          className="inline-flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-xl bg-stone-700 px-4 py-2 text-sm font-medium text-white transition-all hover:bg-stone-800 sm:w-auto"
         >
           <Plus size={16} />
           Subir PDF
@@ -224,10 +224,10 @@ export default function BudgetPDFs() {
 
       {uploadOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 backdrop-blur-sm sm:items-center sm:p-4"
           onClick={(e) => e.target === e.currentTarget && setUploadOpen(false)}
         >
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+          <div className="max-h-[calc(100dvh-0.75rem)] w-full max-w-md overflow-y-auto rounded-t-[1.5rem] bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-xl sm:rounded-2xl sm:p-6">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-stone-800">
                 Subir presupuesto

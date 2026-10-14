@@ -61,14 +61,14 @@ export default function Inspirations() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-stone-800">Inspiración</h1>
           <p className="mt-1 text-sm text-stone-500">
             Guarda ideas y referencias visuales para tu reforma
           </p>
         </div>
-        <Button onClick={() => setModalOpen(true)}>
+        <Button className="w-full sm:w-auto" onClick={() => setModalOpen(true)}>
           <Plus size={16} />
           Añadir
         </Button>
@@ -79,7 +79,7 @@ export default function Inspirations() {
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-stone-600" />
         </div>
       ) : inspirations.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 py-20 text-stone-400">
+        <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 px-5 py-14 text-center text-stone-400 sm:py-20">
           <ImageOff size={40} className="mb-3" />
           <p className="text-sm font-medium">Aún no tienes inspiraciones</p>
           <p className="mt-1 text-xs">Añade la URL de una imagen que te guste</p>

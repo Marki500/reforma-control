@@ -26,15 +26,16 @@ export function Modal({ open, onClose, title, children }) {
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-12 backdrop-blur-sm transition-all"
+      className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden bg-black/40 p-0 backdrop-blur-sm transition-all sm:items-start sm:overflow-y-auto sm:p-4 sm:pt-12"
       onClick={(e) => e.target === overlayRef.current && onClose()}
     >
-      <div className="w-full max-w-lg animate-[fadeIn_0.2s_ease-out] rounded-2xl bg-white p-4 sm:p-6 shadow-xl">
-        <div className="mb-4 flex items-center justify-between">
+      <div className="max-h-[calc(100dvh-env(safe-area-inset-top)-0.75rem)] w-full max-w-lg animate-[fadeIn_0.2s_ease-out] overflow-y-auto rounded-t-[1.5rem] bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-xl sm:max-h-none sm:rounded-2xl sm:p-6">
+        <div className="sticky -top-4 z-10 mb-4 flex items-center justify-between border-b border-stone-100 bg-white/95 py-2 backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:py-0">
           <h2 className="text-lg font-semibold text-stone-800">{title}</h2>
           <button
             onClick={onClose}
-            className="rounded-lg p-2.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+            className="rounded-xl p-2.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+            aria-label="Cerrar"
           >
             <X size={20} />
           </button>

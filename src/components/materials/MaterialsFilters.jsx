@@ -1,4 +1,5 @@
-import { Filter, X } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronDown, Filter, X } from 'lucide-react'
 
 const statuses = ['Mirando', 'Favorito', 'Pendiente de decidir', 'Descartado', 'Comprado', 'Recibido', 'Devuelto']
 const priorities = ['Baja', 'Media', 'Alta', 'Urgente']
@@ -10,6 +11,7 @@ export default function MaterialsFilters({
   onChange,
   onClear,
 }) {
+  const [mobileOpen, setMobileOpen] = useState(false)
   function update(key, value) {
     onChange({ ...filters, [key]: value || '' })
   }
@@ -18,13 +20,17 @@ export default function MaterialsFilters({
 
   return (
     <div className="rounded-2xl bg-white p-4 shadow-sm">
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex min-h-[2.75rem] items-center gap-2 sm:min-h-0 sm:mb-3">
         <Filter size={16} className="text-stone-400" />
-        <span className="text-sm font-medium text-stone-700">Filtros</span>
+        <button type="button" onClick={() => setMobileOpen(value => !value)} className="flex flex-1 items-center gap-2 text-left text-sm font-medium text-stone-700 sm:pointer-events-none">
+          Filtros
+          {hasFilters && <span className="rounded-full bg-terracotta px-2 py-0.5 text-[10px] text-white sm:hidden">Activos</span>}
+          <ChevronDown size={16} className={`ml-auto transition-transform sm:hidden ${mobileOpen ? 'rotate-180' : ''}`} />
+        </button>
         {hasFilters && (
           <button
             onClick={onClear}
-            className="ml-auto inline-flex items-center gap-1 text-xs text-stone-500 hover:text-stone-700"
+            className="hidden items-center gap-1 text-xs text-stone-500 hover:text-stone-700 sm:ml-auto sm:inline-flex"
           >
             <X size={14} />
             Limpiar filtros
@@ -32,7 +38,7 @@ export default function MaterialsFilters({
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={`${mobileOpen ? 'grid' : 'hidden'} mt-3 grid-cols-1 gap-3 sm:mt-0 sm:grid sm:grid-cols-2 lg:grid-cols-4`}>
         <select
           value={filters.category_id || ''}
           onChange={(e) => update('category_id', e.target.value)}
@@ -76,6 +82,7 @@ export default function MaterialsFilters({
             <option key={p} value={p}>{p}</option>
           ))}
         </select>
+        {hasFilters && <button type="button" onClick={onClear} className="inline-flex min-h-[44px] items-center justify-center gap-1 rounded-xl bg-stone-100 text-sm text-stone-600 sm:hidden"><X size={15} /> Limpiar filtros</button>}
       </div>
     </div>
   )

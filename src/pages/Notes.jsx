@@ -105,7 +105,7 @@ export default function Notes() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-stone-800">Notas</h1>
           <p className="mt-1 text-sm text-stone-500">
@@ -113,7 +113,7 @@ export default function Notes() {
           </p>
         </div>
         {!showForm && (
-          <Button size="sm" onClick={startNew}>
+          <Button className="w-full sm:w-auto" size="sm" onClick={startNew}>
             <Plus size={16} />
             Añadir nota
           </Button>
@@ -122,7 +122,7 @@ export default function Notes() {
 
       {/* Editor */}
       {showForm && (
-        <div className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
+        <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm sm:p-5">
           <RichTextEditor
             content={content}
             onChange={setContent}

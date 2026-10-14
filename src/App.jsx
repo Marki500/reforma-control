@@ -20,7 +20,7 @@ function ProtectedRoute({ children }) {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-stone-100">
+      <div className="flex h-[100dvh] items-center justify-center bg-stone-100">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-stone-600" />
       </div>
     )
@@ -35,7 +35,7 @@ function PublicRoute({ children }) {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-stone-100">
+      <div className="flex h-[100dvh] items-center justify-center bg-stone-100">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-stone-600" />
       </div>
     )

@@ -79,9 +79,9 @@ export default function Expenses() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div><h1 className="text-2xl font-semibold text-stone-800">Gastos y pagos</h1><p className="mt-1 text-sm text-stone-500">Controla el coste previsto, el real y lo que queda por pagar.</p></div>
-        <Button onClick={() => edit(null)} disabled={loading || Boolean(error)}><Plus size={16} /> Añadir gasto</Button>
+        <Button className="w-full sm:w-auto" onClick={() => edit(null)} disabled={loading || Boolean(error)}><Plus size={16} /> Añadir gasto</Button>
       </div>
 
       {error && <div role="alert" className="rounded-xl bg-red-50 p-4 text-red-800">{error} <button onClick={load} className="underline">Reintentar</button></div>}
@@ -105,7 +105,7 @@ export default function Expenses() {
         const status = expenseStatus(expense)
         const amount = Number(expense.amount) || 0
         const paid = Number(expense.paid_amount) || 0
-        return <article key={expense.id} className="rounded-2xl bg-white p-5 shadow-sm">
+        return <article key={expense.id} className="rounded-2xl bg-white p-4 shadow-sm sm:p-5">
           <div className="flex items-start gap-3">
             <div className="rounded-xl bg-stone-100 p-2 text-stone-600"><WalletCards size={20} /></div>
             <div className="min-w-0 flex-1">

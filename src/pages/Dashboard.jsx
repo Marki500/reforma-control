@@ -223,14 +223,14 @@ export default function Dashboard() {
   ]
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8">
+    <div className="mx-auto max-w-6xl space-y-5 sm:space-y-8">
       {operationError && <div role="alert" className="fixed bottom-4 left-4 right-4 z-[100] rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 shadow-lg">{operationError}<button type="button" onClick={() => setOperationError('')} className="ml-3 font-semibold underline">Cerrar</button></div>}
       {/* Header */}
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex items-end justify-between gap-3">
         <div>
           <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-terracotta">Vista general</p>
-          <h1 className="font-display text-3xl font-bold tracking-[-0.035em] text-stone-900 sm:text-4xl">Resumen de obra</h1>
-          <p className="mt-2 text-sm text-stone-500">Decisiones, costes y próximos pasos en orden.</p>
+          <h1 className="font-display text-2xl font-bold tracking-[-0.035em] text-stone-900 sm:text-4xl">Resumen de obra</h1>
+          <p className="mt-2 hidden text-sm text-stone-500 sm:block">Decisiones, costes y próximos pasos en orden.</p>
         </div>
          <div className="flex items-center gap-2 sm:gap-3">
           <button
@@ -251,7 +251,7 @@ export default function Dashboard() {
       </div>
 
       {/* Coste total */}
-      <div className="relative overflow-hidden rounded-[1.4rem] bg-stone-900 p-6 text-white shadow-[0_20px_55px_rgba(37,42,35,0.16)] sm:p-8">
+      <div className="relative overflow-hidden rounded-[1.4rem] bg-stone-900 p-5 text-white shadow-[0_20px_55px_rgba(37,42,35,0.16)] sm:p-8">
         <div className="absolute -right-12 -top-20 h-52 w-52 rounded-full bg-terracotta/20 blur-3xl" />
         <div className="relative flex items-center gap-4">
           <div className="rounded-xl bg-white/10 p-3 ring-1 ring-white/10">
@@ -259,7 +259,7 @@ export default function Dashboard() {
           </div>
           <div>
             <p className="text-xs font-medium uppercase tracking-[0.12em] text-white/45">Coste total estimado</p>
-            <p className="mt-1 font-display text-4xl font-bold tracking-[-0.04em] text-white">
+            <p className="mt-1 font-display text-3xl font-bold tracking-[-0.04em] text-white sm:text-4xl">
               {formatCurrency(stats.totalCost)}
             </p>
           </div>
@@ -277,7 +277,7 @@ export default function Dashboard() {
 
       {/* Resumen del proyecto */}
       {resumenNotes.length > 0 && (
-        <div className="rounded-2xl bg-white p-6 shadow-sm">
+        <div className="rounded-2xl bg-white p-4 shadow-sm sm:p-6">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="flex items-center gap-2 text-lg font-semibold text-stone-800">
               <StickyNote size={18} className="text-olive" />
@@ -306,13 +306,13 @@ export default function Dashboard() {
       )}
 
       {/* Stats grid */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-6">
         {statCards.map((card) => {
           const Icon = card.icon
           return (
             <div
               key={card.label}
-              className="rounded-2xl bg-white/90 p-4 shadow-[0_8px_28px_rgba(37,42,35,0.055)] ring-1 ring-stone-200/60 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_32px_rgba(37,42,35,0.09)]"
+              className="rounded-2xl bg-white/90 p-3.5 shadow-[0_8px_28px_rgba(37,42,35,0.055)] ring-1 ring-stone-200/60 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_32px_rgba(37,42,35,0.09)] sm:p-4"
             >
               <div className={`mb-3 inline-flex rounded-xl p-2 ${card.color}`}>
                 <Icon size={18} />
@@ -325,8 +325,8 @@ export default function Dashboard() {
       </div>
 
       {/* Grid de presupuesto visual */}
-      <div className="rounded-2xl bg-white p-6 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
+      <div className="rounded-2xl bg-white p-4 shadow-sm sm:p-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 text-lg font-semibold text-stone-800">
             <LayoutGrid size={18} className="text-olive" />
             Presupuesto por categorías
@@ -355,10 +355,8 @@ export default function Dashboard() {
           </div>
         ) : (
           <div
-            className="grid gap-4"
-            style={{
-              gridTemplateColumns: `repeat(${gridConfig.num_columns || 3}, 1fr)`,
-            }}
+            className="budget-visual-grid grid gap-4"
+            style={{ '--budget-columns': gridConfig.num_columns || 3 }}
           >
             {Array.from({ length: gridConfig.num_rows || 2 }).map((_, r) =>
               Array.from({ length: gridConfig.num_columns || 3 }).map((_, c) => {

@@ -37,7 +37,7 @@ export default function MaterialCard({ material, onEdit, onDelete, onToggleCount
         )}
 
         {/* Image overlay actions */}
-        <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/30 group-hover:opacity-100">
+        <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-2 bg-gradient-to-t from-black/45 to-transparent p-3 opacity-100 transition-all duration-200 sm:inset-0 sm:justify-center sm:bg-black/0 sm:p-0 sm:opacity-0 sm:group-hover:bg-black/30 sm:group-hover:opacity-100">
           {material.product_url && (
             <a
               href={material.product_url}

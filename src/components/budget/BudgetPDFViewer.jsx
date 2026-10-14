@@ -8,10 +8,10 @@ export default function BudgetPDFViewer({ pdf, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-12 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden bg-black/40 p-0 backdrop-blur-sm sm:items-start sm:overflow-y-auto sm:p-4 sm:pt-12"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="flex w-full max-w-4xl flex-col rounded-2xl bg-white shadow-xl">
+      <div className="flex max-h-[calc(100dvh-0.75rem)] w-full max-w-4xl flex-col rounded-t-[1.5rem] bg-white shadow-xl sm:max-h-none sm:rounded-2xl">
         <div className="flex items-center justify-between border-b border-stone-200 p-4">
           <div className="flex items-center gap-3 min-w-0">
             <FileText size={20} className="flex-shrink-0 text-terracotta" />

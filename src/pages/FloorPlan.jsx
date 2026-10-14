@@ -79,14 +79,14 @@ export default function FloorPlan() {
   return (
     <div className="mx-auto max-w-6xl">
       {operationError && <div role="alert" className="fixed bottom-4 left-4 right-4 z-[100] rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 shadow-lg">{operationError}<button type="button" onClick={() => setOperationError('')} className="ml-3 font-semibold underline">Cerrar</button></div>}
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-stone-800">Planos</h1>
           <p className="mt-1 text-sm text-stone-500">
             {plans.length} planos
           </p>
         </div>
-        <Button size="sm" onClick={() => setModalOpen(true)}>
+        <Button className="w-full sm:w-auto" size="sm" onClick={() => setModalOpen(true)}>
           <Plus size={16} />
           Añadir plano
         </Button>
@@ -97,7 +97,7 @@ export default function FloorPlan() {
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-stone-600" />
         </div>
       ) : plans.length === 0 ? (
-        <div className="rounded-2xl bg-white p-12 text-center shadow-sm">
+        <div className="rounded-2xl bg-white p-7 text-center shadow-sm sm:p-12">
           <ImageOff size={48} className="mx-auto mb-4 text-stone-300" />
           <h2 className="text-lg font-semibold text-stone-700">No hay planos</h2>
           <p className="mt-1 text-sm text-stone-500">

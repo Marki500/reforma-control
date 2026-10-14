@@ -236,14 +236,14 @@ export default function Materials() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
           <Button
             variant="secondary"
             size="sm"
             onClick={() => setImportModalOpen(true)}
           >
             <ExternalLink size={16} />
-            <span className="hidden sm:inline">Importar URL</span>
+            <span>Importar URL</span>
           </Button>
           <Button
             size="sm"
@@ -253,7 +253,7 @@ export default function Materials() {
             }}
           >
             <Plus size={16} />
-            <span className="hidden sm:inline">Añadir</span>
+            <span>Añadir</span>
           </Button>
         </div>
       </div>
@@ -270,7 +270,7 @@ export default function Materials() {
       />
 
       {/* View toggle */}
-      <div className="flex items-center justify-end gap-1">
+      <div className="hidden items-center justify-end gap-1 sm:flex">
         <button
           onClick={() => setViewMode('cards')}
           className={`rounded-lg p-2 transition-colors ${
@@ -299,7 +299,7 @@ export default function Materials() {
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-stone-600" />
         </div>
       ) : filteredMaterials.length === 0 ? (
-        <div className="rounded-2xl bg-white p-12 text-center shadow-sm">
+        <div className="rounded-2xl bg-white p-7 text-center shadow-sm sm:p-12">
           <Package size={48} className="mx-auto mb-4 text-stone-300" />
           <h2 className="text-lg font-semibold text-stone-700">No hay materiales</h2>
           <p className="mt-1 text-sm text-stone-500">
@@ -307,7 +307,7 @@ export default function Materials() {
               ? 'No se encontraron materiales con esa búsqueda'
               : 'Empieza añadiendo tu primer material'}
           </p>
-          <div className="mt-4 flex justify-center gap-3">
+          <div className="mt-4 flex flex-col justify-center gap-3 sm:flex-row">
             <Button
               variant="secondary"
               onClick={() => setImportModalOpen(true)}

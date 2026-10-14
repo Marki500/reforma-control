@@ -2,36 +2,28 @@ import { NavLink } from 'react-router-dom'
 import { AppIcon } from '../brand/AppIcon'
 import { BrandLockup } from '../brand/Brand'
 import InstallApp from '../pwa/InstallApp'
+import { X } from 'lucide-react'
+import { navigationLinks } from './navigation'
 
-const links = [
-  { to: '/dashboard', label: 'Resumen', icon: 'dashboard' },
-  { to: '/materials', label: 'Materiales', icon: 'materials' },
-  { to: '/planos', label: 'Planos', icon: 'plans' },
-  { to: '/notas', label: 'Notas', icon: 'notes' },
-  { to: '/presupuestos', label: 'Presupuestos', icon: 'budgets' },
-  { to: '/gastos', label: 'Gastos', icon: 'expenses' },
-  { to: '/proveedores', label: 'Proveedores', icon: 'suppliers' },
-  { to: '/tareas', label: 'Tareas', icon: 'tasks' },
-  { to: '/calendario', label: 'Calendario', icon: 'calendar' },
-  { to: '/progreso', label: 'Progreso', icon: 'progress' },
-  { to: '/inspiracion', label: 'Inspiración', icon: 'ideas' },
-]
-
-export default function Sidebar() {
+export default function Sidebar({ onNavigate, onClose }) {
   return (
     <aside className="safe-area-sidebar flex h-[100dvh] w-72 flex-col bg-stone-900 text-white shadow-[12px_0_36px_rgba(37,42,35,0.08)]">
       <div className="px-6 pb-6 pt-7">
-        <BrandLockup inverse />
+        <div className="flex items-center justify-between gap-3">
+          <BrandLockup inverse />
+          {onClose && <button type="button" onClick={onClose} className="-mr-2 rounded-xl p-2.5 text-white/55 hover:bg-white/10 hover:text-white" aria-label="Cerrar navegación"><X size={20} /></button>}
+        </div>
         <div className="mt-6 h-px bg-white/10" />
         <p className="mt-4 text-[0.66rem] font-semibold uppercase tracking-[0.18em] text-white/35">Tu proyecto</p>
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
-        {links.map((link) => {
+        {navigationLinks.map((link) => {
           return (
             <NavLink
               key={link.to}
               to={link.to}
+              onClick={onNavigate}
               className={({ isActive }) =>
                 `group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 ${
                   isActive
@@ -51,6 +43,7 @@ export default function Sidebar() {
         <InstallApp />
         <NavLink
           to="/settings"
+          onClick={onNavigate}
           className={({ isActive }) => `flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm transition-all ${isActive ? 'bg-white text-stone-900' : 'text-white/45 hover:bg-white/[0.07] hover:text-white'}`}
         >
           <AppIcon name="settings" size={19} />

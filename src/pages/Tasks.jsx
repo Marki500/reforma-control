@@ -98,9 +98,9 @@ export default function Tasks() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div><h1 className="text-2xl font-semibold text-stone-800">Tareas</h1><p className="mt-1 text-sm text-stone-500">{tasks.filter(task => task.status !== 'Completada').length} abiertas · {tasks.filter(task => isTaskOverdue(task)).length} vencidas</p></div>
-        <Button onClick={() => edit(null)} disabled={loading || Boolean(error)}><Plus size={16} /> Añadir tarea</Button>
+        <Button className="w-full sm:w-auto" onClick={() => edit(null)} disabled={loading || Boolean(error)}><Plus size={16} /> Añadir tarea</Button>
       </div>
       {error && <div role="alert" className="rounded-xl bg-red-50 p-4 text-red-800">{error} <button onClick={load} className="underline">Reintentar</button></div>}
       <div className="grid gap-3 rounded-2xl bg-white p-4 sm:grid-cols-2">
@@ -114,7 +114,7 @@ export default function Tasks() {
         const progress = getTaskProgress(task)
         return (
           <article key={task.id} className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-stone-200/70">
-            <div className="flex items-start gap-3 p-5">
+            <div className="flex items-start gap-2 p-4 sm:gap-3 sm:p-5">
               <input className="mt-1 h-5 w-5 accent-stone-700" type="checkbox" aria-label={`Completar ${task.title}`} checked={task.status === 'Completada'} disabled={busy} onChange={() => toggle(task)} />
               <div className="min-w-0 flex-1"><h2 className={`break-words font-semibold ${task.status === 'Completada' ? 'text-stone-400 line-through' : 'text-stone-800'}`}>{task.title}</h2>{task.description && <p className="mt-1 whitespace-pre-wrap break-words text-sm text-stone-500">{task.description}</p>}
                 <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-600"><span>{task.status}</span><span>Prioridad {task.priority.toLowerCase()}</span>{task.rooms?.name && <span>{task.rooms.name}</span>}{task.due_date && <span className={isTaskOverdue(task) ? 'font-semibold text-red-600' : ''}>{isTaskOverdue(task) ? 'Vencida · ' : ''}{new Date(`${task.due_date}T12:00:00`).toLocaleDateString('es-ES')}</span>}</div>
@@ -122,7 +122,7 @@ export default function Tasks() {
               <button aria-label={`Editar ${task.title}`} className="rounded-lg p-2 text-stone-500 transition hover:bg-stone-100 hover:text-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400" disabled={busy} onClick={() => edit(task)}><Pencil size={18} /></button>
               <button aria-label={`Eliminar ${task.title}`} className="rounded-lg p-2 text-stone-500 transition hover:bg-red-50 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400" disabled={busy} onClick={() => setDeleting(task)}><Trash2 size={18} /></button>
             </div>
-            {progress.total > 0 && <div className="border-t border-stone-100 bg-stone-50/70 px-5 py-4 sm:pl-12">
+            {progress.total > 0 && <div className="border-t border-stone-100 bg-stone-50/70 px-4 py-4 sm:px-5 sm:pl-12">
               <div className="mb-3 flex items-center justify-between gap-3 text-xs font-medium text-stone-600"><span className="flex items-center gap-2"><ListChecks size={15} /> Pasos</span><span className="tabular-nums">{progress.completed} de {progress.total}</span></div>
               <div className="mb-3 h-1 overflow-hidden rounded-full bg-stone-200"><div className="h-full rounded-full bg-olive transition-[width] duration-300" style={{ width: `${progress.percent}%` }} /></div>
               <ul className="space-y-2">

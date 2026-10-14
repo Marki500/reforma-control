@@ -30,7 +30,8 @@ app.use((req, res, next) => {
 const supabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://api-reforma.noxumlab.com').replace(/\/$/, '')
 const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
 const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || ''
-const aiModel = process.env.AI_MODEL || 'gemini-2.5-flash'
+const aiModel = process.env.AI_MODEL || 'gemini-3.8-flash'
+const aiFallbackModels = [...new Set([aiModel, 'gemini-3.8-flash', 'gemini-3.6-flash'])]
 const aiRequestTimes = new Map()
 
 async function requireSession(req, res, next) {
@@ -417,9 +418,8 @@ function getGenerateContentText(payload) {
   return (payload?.candidates?.[0]?.content?.parts || []).map(part => part?.text || '').join('')
 }
 
-async function requestBudgetAnalysis(file) {
-  const base64 = file.buffer.toString('base64')
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(aiModel)}:generateContent`, {
+async function requestBudgetAnalysisWithModel(base64, model) {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
     signal: AbortSignal.timeout(45000),
@@ -442,10 +442,25 @@ async function requestBudgetAnalysis(file) {
   const jsonText = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
   if (!jsonText) throw new Error('La IA no devolvió datos para este documento.')
   try {
-    return sanitizeBudgetAnalysis(JSON.parse(jsonText))
+    return { draft: sanitizeBudgetAnalysis(JSON.parse(jsonText)), model }
   } catch {
     throw new Error('La IA devolvió una respuesta que no se pudo interpretar. Inténtalo de nuevo.')
   }
+}
+
+async function requestBudgetAnalysis(file) {
+  const base64 = file.buffer.toString('base64')
+  let lastError
+  for (const model of aiFallbackModels) {
+    try {
+      return await requestBudgetAnalysisWithModel(base64, model)
+    } catch (error) {
+      lastError = error
+      if (error?.status !== 404) throw error
+    }
+  }
+  lastError.triedModels = aiFallbackModels
+  throw lastError
 }
 
 function classifyAIError(error) {
@@ -455,7 +470,7 @@ function classifyAIError(error) {
   }
   if (error?.status === 429) return { status: 429, code: 'AI_RATE_LIMIT', message: 'Se ha alcanzado temporalmente el límite gratuito de Gemini.' }
   if ([401, 403].includes(error?.status)) return { status: 503, code: 'AI_KEY_REJECTED', message: 'Gemini ha rechazado la clave API configurada.' }
-  if (error?.status === 404) return { status: 503, code: 'AI_MODEL_NOT_FOUND', message: `El modelo “${aiModel}” no está disponible para esta clave.` }
+  if (error?.status === 404) return { status: 503, code: 'AI_MODEL_NOT_FOUND', message: `Ninguno de los modelos configurados está disponible para esta clave (${(error.triedModels || [aiModel]).join(', ')}).` }
   if (error?.status === 400) return { status: 502, code: 'AI_REQUEST_REJECTED', message: 'Gemini ha rechazado el PDF o la configuración del modelo.' }
   if (/fetch failed|network|ENOTFOUND|ECONN/i.test(message)) return { status: 502, code: 'AI_CONNECTION', message: 'El servidor no ha podido conectarse con Gemini.' }
   if (/no devolvió datos|no se pudo interpretar/i.test(message)) return { status: 502, code: 'AI_INVALID_RESPONSE', message }
@@ -481,9 +496,9 @@ app.post('/api/analyze-budget', requireSession, pdfUpload.single('file'), async 
 
   console.info('[AI budget analysis:start]', { ...diagnostic, bytes: req.file.size })
   try {
-    const draft = await requestBudgetAnalysis(req.file)
-    console.info('[AI budget analysis:success]', { ...diagnostic, durationMs: Date.now() - startedAt, lineItems: draft.line_items.length })
-    res.json({ draft, model: aiModel, request_id: req.requestId })
+    const { draft, model } = await requestBudgetAnalysis(req.file)
+    console.info('[AI budget analysis:success]', { ...diagnostic, selectedModel: model, durationMs: Date.now() - startedAt, lineItems: draft.line_items.length })
+    res.json({ draft, model, request_id: req.requestId })
   } catch (error) {
     const classified = classifyAIError(error)
     console.error('[AI budget analysis:error]', { ...diagnostic, durationMs: Date.now() - startedAt, code: classified.code, providerStatus: error?.status || null, providerMessage: error?.message || 'Unknown error' })

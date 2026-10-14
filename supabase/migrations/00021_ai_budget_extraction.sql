@@ -1,0 +1,12 @@
+BEGIN;
+
+ALTER TABLE public.budget_pdfs
+  ADD COLUMN IF NOT EXISTS quote_number TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS subtotal NUMERIC(12,2) CHECK (subtotal IS NULL OR subtotal >= 0),
+  ADD COLUMN IF NOT EXISTS tax_rate NUMERIC(6,2) CHECK (tax_rate IS NULL OR tax_rate >= 0),
+  ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(12,2) CHECK (tax_amount IS NULL OR tax_amount >= 0),
+  ADD COLUMN IF NOT EXISTS line_items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS ai_extracted BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS ai_model TEXT NOT NULL DEFAULT '';
+
+COMMIT;

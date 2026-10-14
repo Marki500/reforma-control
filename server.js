@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url'
 import * as cheerio from 'cheerio'
 import multer from 'multer'
 import { fetchRemote, normalizeRemoteUrl, RemoteFetchError } from './server/remoteFetch.js'
+import { budgetAnalysisPrompt, budgetAnalysisSchema, sanitizeBudgetAnalysis } from './server/budgetAnalysis.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const uploadsDir = path.join(__dirname, 'uploads')
@@ -21,6 +22,9 @@ app.use(express.json())
 
 const supabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://api-reforma.noxumlab.com').replace(/\/$/, '')
 const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || ''
+const aiModel = process.env.AI_MODEL || 'gemini-2.5-flash'
+const aiRequestTimes = new Map()
 
 async function requireSession(req, res, next) {
   const authorization = req.get('Authorization')
@@ -400,6 +404,100 @@ const documentUpload = multer({
   storage,
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => cb(null, ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)),
+})
+
+function getInteractionText(payload) {
+  if (typeof payload?.output_text === 'string') return payload.output_text
+  const steps = Array.isArray(payload?.steps) ? payload.steps : []
+  const lastStep = steps.at(-1)
+  return (lastStep?.content || []).map(part => part?.text || '').join('')
+}
+
+function getGenerateContentText(payload) {
+  return (payload?.candidates?.[0]?.content?.parts || []).map(part => part?.text || '').join('')
+}
+
+async function requestBudgetAnalysis(file) {
+  const base64 = file.buffer.toString('base64')
+  const interactionResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
+    signal: AbortSignal.timeout(60000),
+    body: JSON.stringify({
+      model: aiModel,
+      input: [
+        { type: 'document', data: base64, mime_type: 'application/pdf' },
+        { type: 'text', text: budgetAnalysisPrompt },
+      ],
+      response_format: { type: 'text', mime_type: 'application/json', schema: budgetAnalysisSchema },
+    }),
+  })
+  let payload = await interactionResponse.json().catch(() => ({}))
+  let text = getInteractionText(payload)
+
+  // Older Gemini models may not support the newer Interactions endpoint yet.
+  if (!interactionResponse.ok && [400, 404].includes(interactionResponse.status)) {
+    const fallbackResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(aiModel)}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
+      signal: AbortSignal.timeout(60000),
+      body: JSON.stringify({
+        contents: [{ parts: [
+          { inline_data: { mime_type: 'application/pdf', data: base64 } },
+          { text: `${budgetAnalysisPrompt}\nDevuelve exclusivamente JSON válido con la estructura solicitada.` },
+        ] }],
+        generationConfig: { responseMimeType: 'application/json', temperature: 0.1 },
+      }),
+    })
+    payload = await fallbackResponse.json().catch(() => ({}))
+    text = getGenerateContentText(payload)
+    if (!fallbackResponse.ok) {
+      const error = new Error(payload?.error?.message || `Gemini respondió con HTTP ${fallbackResponse.status}.`)
+      error.status = fallbackResponse.status
+      throw error
+    }
+  } else if (!interactionResponse.ok) {
+    const error = new Error(payload?.error?.message || `Gemini respondió con HTTP ${interactionResponse.status}.`)
+    error.status = interactionResponse.status
+    throw error
+  }
+
+  const jsonText = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+  if (!jsonText) throw new Error('La IA no devolvió datos para este documento.')
+  try {
+    return sanitizeBudgetAnalysis(JSON.parse(jsonText))
+  } catch {
+    throw new Error('La IA devolvió una respuesta que no se pudo interpretar. Inténtalo de nuevo.')
+  }
+}
+
+app.post('/api/analyze-budget', requireSession, pdfUpload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Selecciona un archivo PDF válido.' })
+  if (!geminiApiKey) return res.status(503).json({ error: 'La IA todavía no está configurada en el servidor.' })
+  if (req.file.size > 14 * 1024 * 1024) return res.status(413).json({ error: 'Para analizarlo con IA, el PDF debe ocupar como máximo 14 MB.' })
+
+  const userId = req.authUser.id
+  const now = Date.now()
+  if (now - (aiRequestTimes.get(userId) || 0) < 5000) {
+    return res.status(429).json({ error: 'Espera unos segundos antes de volver a analizar otro documento.' })
+  }
+  aiRequestTimes.set(userId, now)
+  if (aiRequestTimes.size > 1000) {
+    for (const [id, time] of aiRequestTimes) if (now - time > 60 * 60 * 1000) aiRequestTimes.delete(id)
+  }
+
+  try {
+    const draft = await requestBudgetAnalysis(req.file)
+    res.json({ draft, model: aiModel })
+  } catch (error) {
+    const status = error?.status === 429 ? 429 : error?.status === 401 || error?.status === 403 ? 503 : 502
+    const message = status === 429
+      ? 'Se ha alcanzado temporalmente el límite gratuito de la IA. Inténtalo más tarde.'
+      : status === 503
+        ? 'La clave o el modelo de IA no son válidos. Revisa las variables del servidor.'
+        : error instanceof Error ? error.message : 'No se pudo analizar el presupuesto.'
+    res.status(status).json({ error: message })
+  }
 })
 
 app.post('/api/upload-file', requireSession, upload.single('file'), async (req, res) => {

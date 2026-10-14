@@ -84,7 +84,7 @@ test('uploads require a valid user and forward that user to Storage', async () =
       await new Promise(resolve => setTimeout(resolve, 100))
     }
     assert.ok(ready, log)
-    for (const endpoint of ['upload-file', 'upload-pdf', 'upload-document', 'upload-image', 'import-product', 'extract-inspiration']) {
+    for (const endpoint of ['upload-file', 'upload-pdf', 'upload-document', 'upload-image', 'import-product', 'extract-inspiration', 'analyze-budget']) {
       const anonymous = await fetch(`${base}/api/${endpoint}`, { method: 'POST' })
       assert.equal(anonymous.status, 401)
       const invalid = await fetch(`${base}/api/${endpoint}`, { method: 'POST', headers: { Authorization: 'Bearer invalid' } })

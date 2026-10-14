@@ -1,4 +1,4 @@
-import { authenticatedUpload } from './uploadService'
+import { authenticatedRequest, authenticatedUpload } from './uploadService'
 import { normalizeStorageRecord } from '../utils/storageUrl'
 import { supabase } from './supabaseClient'
 import { removeStoredFile } from './storageCleanup'
@@ -78,4 +78,10 @@ export async function uploadPDF(file) {
   const formData = new FormData()
   formData.append('file', file)
   return authenticatedUpload('/api/upload-pdf', formData)
+}
+
+export async function analyzeBudgetPDF(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return authenticatedRequest('/api/analyze-budget', formData)
 }

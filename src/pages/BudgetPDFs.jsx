@@ -11,6 +11,8 @@ import {
   Building2,
   Pencil,
   CheckCircle2,
+  Sparkles,
+  AlertTriangle,
 } from 'lucide-react'
 import {
   getBudgetPDFs,
@@ -19,6 +21,7 @@ import {
   uploadPDF,
   updateBudgetPDF,
   acceptBudgetPDF,
+  analyzeBudgetPDF,
 } from '../services/budgetPDFService'
 import { getCategories } from '../services/materialsService'
 import { getSuppliers } from '../services/suppliersService'
@@ -31,6 +34,7 @@ import { removeStoredFile } from '../services/storageCleanup'
 
 const budgetStatuses = ['Solicitado', 'Recibido', 'Comparando', 'Aceptado', 'Rechazado']
 const emptyMetadata = { name: '', category_id: '', supplier_id: '', notes: '', total_amount: '', issued_date: '', valid_until: '', status: 'Recibido', payment_terms: '', warranty: '' }
+const normalizeName = value => (value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
 export default function BudgetPDFs() {
   const [operationError, setOperationError] = useState('')
@@ -47,6 +51,9 @@ export default function BudgetPDFs() {
   const [filterSupplier, setFilterSupplier] = useState(() => searchParams.get('supplier') || '')
   const [filterStatus, setFilterStatus] = useState('')
   const [uploadForm, setUploadForm] = useState({ file: null, ...emptyMetadata })
+  const [analysisState, setAnalysisState] = useState('idle')
+  const [analysisResult, setAnalysisResult] = useState(null)
+  const [analysisError, setAnalysisError] = useState('')
   const [editingPdf, setEditingPdf] = useState(null)
   const [editForm, setEditForm] = useState(emptyMetadata)
   const [accepting, setAccepting] = useState(null)
@@ -76,16 +83,61 @@ export default function BudgetPDFs() {
   function chooseFile(file) {
     if (!file || file.type !== 'application/pdf') return
     setUploadForm(previous => ({ ...previous, file, name: previous.name || file.name.replace(/\.pdf$/i, '') }))
+    setAnalysisState('idle')
+    setAnalysisResult(null)
+    setAnalysisError('')
   }
 
   function openUpload() {
     setUploadForm({ file: null, ...emptyMetadata })
+    setAnalysisState('idle')
+    setAnalysisResult(null)
+    setAnalysisError('')
     setUploadOpen(true)
+  }
+
+  async function analyzeUpload() {
+    if (!uploadForm.file || analysisState === 'analyzing') return
+    setAnalysisState('analyzing')
+    setAnalysisError('')
+    try {
+      const result = await analyzeBudgetPDF(uploadForm.file)
+      const draft = result.draft
+      setAnalysisResult({ ...draft, model: result.model })
+      if (!draft.is_budget) {
+        setAnalysisState('idle')
+        setAnalysisError('La IA no reconoce este archivo como un presupuesto. Puedes revisarlo o rellenar los datos manualmente.')
+        return
+      }
+      const supplier = suppliers.find(item => normalizeName(item.name) === normalizeName(draft.supplier_name))
+      const category = categories.find(item => {
+        const categoryName = normalizeName(item.name)
+        const suggestion = normalizeName(draft.suggested_category)
+        return suggestion && (categoryName === suggestion || categoryName.includes(suggestion) || suggestion.includes(categoryName))
+      })
+      setUploadForm(previous => ({
+        ...previous,
+        name: draft.document_title || previous.name,
+        supplier_id: supplier?.id || previous.supplier_id,
+        category_id: category?.id || previous.category_id,
+        notes: draft.notes || '',
+        total_amount: draft.total_amount ?? '',
+        issued_date: draft.issued_date || '',
+        valid_until: draft.valid_until || '',
+        payment_terms: draft.payment_terms || '',
+        warranty: draft.warranty || '',
+      }))
+      setAnalysisState('ready')
+    } catch (err) {
+      setAnalysisState('idle')
+      setAnalysisError(err.message || 'No se pudo analizar el presupuesto.')
+    }
   }
 
   async function handleUpload(event) {
     event.preventDefault()
     if (!uploadForm.file) { setOperationError('Selecciona un archivo PDF.'); return }
+    if (!['ready', 'manual'].includes(analysisState)) { setAnalysisError('Analiza el PDF o elige rellenarlo manualmente antes de guardarlo.'); return }
     setOperationError('')
     setUploading(true)
     let result
@@ -101,6 +153,13 @@ export default function BudgetPDFs() {
         total_amount: uploadForm.total_amount === '' ? null : Number(uploadForm.total_amount),
         issued_date: uploadForm.issued_date || null, valid_until: uploadForm.valid_until || null,
         status: uploadForm.status, payment_terms: uploadForm.payment_terms.trim(), warranty: uploadForm.warranty.trim(),
+        quote_number: analysisState === 'ready' ? analysisResult?.quote_number || '' : '',
+        subtotal: analysisState === 'ready' ? analysisResult?.subtotal : null,
+        tax_rate: analysisState === 'ready' ? analysisResult?.tax_rate : null,
+        tax_amount: analysisState === 'ready' ? analysisResult?.tax_amount : null,
+        line_items: analysisState === 'ready' ? analysisResult?.line_items || [] : [],
+        ai_extracted: analysisState === 'ready',
+        ai_model: analysisState === 'ready' ? analysisResult?.model || '' : '',
       })
       await load()
       setUploadOpen(false)
@@ -321,6 +380,7 @@ export default function BudgetPDFs() {
                 Subir presupuesto
               </h2>
               <button
+                type="button"
                 onClick={() => setUploadOpen(false)}
                 className="rounded-lg p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-600"
               >
@@ -358,13 +418,41 @@ export default function BudgetPDFs() {
               disabled={uploading}
             />
             <div className="mt-4 space-y-3">
-              <label className="block text-sm">Nombre<input value={uploadForm.name} onChange={event => setUploadForm(previous => ({ ...previous, name: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" placeholder="Ej. Presupuesto instalación eléctrica" /></label>
-              <label className="block text-sm">Proveedor<select value={uploadForm.supplier_id} onChange={event => setUploadForm(previous => ({ ...previous, supplier_id: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"><option value="">Sin proveedor vinculado</option>{suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.trade}</option>)}</select></label>
-              <label className="block text-sm">Categoría<select value={uploadForm.category_id} onChange={event => setUploadForm(previous => ({ ...previous, category_id: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"><option value="">Sin categoría</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
-              <label className="block text-sm">Notas<textarea rows={2} value={uploadForm.notes} onChange={event => setUploadForm(previous => ({ ...previous, notes: event.target.value }))} className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" /></label>
-              <div className="grid gap-3 sm:grid-cols-2"><label className="block text-sm">Importe total<input type="number" min="0" step="0.01" value={uploadForm.total_amount} onChange={event => setUploadForm(previous => ({ ...previous, total_amount: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label><label className="block text-sm">Estado<select value={uploadForm.status} onChange={event => setUploadForm(previous => ({ ...previous, status: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm">{budgetStatuses.map(status => <option key={status}>{status}</option>)}</select></label><label className="block text-sm">Fecha de emisión<input type="date" value={uploadForm.issued_date} onChange={event => setUploadForm(previous => ({ ...previous, issued_date: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label><label className="block text-sm">Válido hasta<input type="date" value={uploadForm.valid_until} onChange={event => setUploadForm(previous => ({ ...previous, valid_until: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label></div>
-              <label className="block text-sm">Forma de pago<input value={uploadForm.payment_terms} onChange={event => setUploadForm(previous => ({ ...previous, payment_terms: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label><label className="block text-sm">Garantía<input value={uploadForm.warranty} onChange={event => setUploadForm(previous => ({ ...previous, warranty: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label>
-              <button type="submit" disabled={uploading || !uploadForm.file} className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-stone-700 px-4 text-sm font-medium text-white disabled:opacity-50">{uploading && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />}{uploading ? 'Subiendo…' : 'Guardar presupuesto'}</button>
+              {analysisError && <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"><AlertTriangle size={16} className="mt-0.5 shrink-0" /><span>{analysisError}</span></div>}
+
+              {analysisState === 'idle' && uploadForm.file && (
+                <div className="space-y-2">
+                  <button type="button" onClick={analyzeUpload} className="inline-flex min-h-[46px] w-full items-center justify-center gap-2 rounded-xl bg-terracotta px-4 text-sm font-semibold text-white hover:opacity-90">
+                    <Sparkles size={17} /> Analizar con IA
+                  </button>
+                  <button type="button" onClick={() => { setAnalysisState('manual'); setAnalysisError('') }} className="min-h-[40px] w-full text-xs font-medium text-stone-500 hover:text-stone-800">Rellenar manualmente</button>
+                </div>
+              )}
+              {analysisState === 'analyzing' && <div className="flex min-h-[90px] flex-col items-center justify-center gap-2 rounded-xl bg-stone-50 text-sm text-stone-600"><span className="h-5 w-5 animate-spin rounded-full border-2 border-stone-300 border-t-terracotta" /><span>Leyendo texto, tablas e importes…</span></div>}
+
+              {analysisState === 'ready' && analysisResult && (
+                <div className="space-y-3 rounded-xl border border-green-200 bg-green-50/70 p-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-green-800"><Sparkles size={16} /> Borrador generado · revísalo antes de guardar</div>
+                  <div className="grid grid-cols-2 gap-2 text-xs text-stone-600">
+                    {analysisResult.supplier_name && <div><span className="block text-stone-400">Proveedor detectado</span>{analysisResult.supplier_name}</div>}
+                    {analysisResult.quote_number && <div><span className="block text-stone-400">N.º presupuesto</span>{analysisResult.quote_number}</div>}
+                    {analysisResult.subtotal != null && <div><span className="block text-stone-400">Base</span>{formatCurrency(analysisResult.subtotal)}</div>}
+                    {analysisResult.tax_amount != null && <div><span className="block text-stone-400">IVA {analysisResult.tax_rate != null ? `${analysisResult.tax_rate}%` : ''}</span>{formatCurrency(analysisResult.tax_amount)}</div>}
+                  </div>
+                  {analysisResult.line_items?.length > 0 && <details><summary className="cursor-pointer text-xs font-medium text-green-800">Ver {analysisResult.line_items.length} partidas detectadas</summary><div className="mt-2 max-h-40 space-y-1 overflow-y-auto">{analysisResult.line_items.map((item, index) => <div key={`${item.description}-${index}`} className="flex justify-between gap-3 border-t border-green-100 py-1.5 text-xs"><span>{item.description}{item.quantity != null ? ` · ${item.quantity} ${item.unit}` : ''}</span><strong className="shrink-0">{item.total != null ? formatCurrency(item.total) : '—'}</strong></div>)}</div></details>}
+                  {analysisResult.warnings?.map(warning => <p key={warning} className="flex gap-1.5 text-xs text-amber-800"><AlertTriangle size={14} className="shrink-0" />{warning}</p>)}
+                </div>
+              )}
+
+              {['ready', 'manual'].includes(analysisState) && <>
+                <label className="block text-sm">Nombre<input value={uploadForm.name} onChange={event => setUploadForm(previous => ({ ...previous, name: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" placeholder="Ej. Presupuesto instalación eléctrica" /></label>
+                <label className="block text-sm">Proveedor<select value={uploadForm.supplier_id} onChange={event => setUploadForm(previous => ({ ...previous, supplier_id: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"><option value="">Sin proveedor vinculado</option>{suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.trade}</option>)}</select>{analysisState === 'ready' && analysisResult?.supplier_name && !uploadForm.supplier_id && <span className="mt-1 block text-xs text-amber-700">“{analysisResult.supplier_name}” no coincide con un proveedor guardado. Puedes vincularlo después.</span>}</label>
+                <label className="block text-sm">Categoría<select value={uploadForm.category_id} onChange={event => setUploadForm(previous => ({ ...previous, category_id: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"><option value="">Sin categoría</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+                <label className="block text-sm">Notas<textarea rows={2} value={uploadForm.notes} onChange={event => setUploadForm(previous => ({ ...previous, notes: event.target.value }))} className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" /></label>
+                <div className="grid gap-3 sm:grid-cols-2"><label className="block text-sm">Importe total<input type="number" min="0" step="0.01" value={uploadForm.total_amount} onChange={event => setUploadForm(previous => ({ ...previous, total_amount: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label><label className="block text-sm">Estado<select value={uploadForm.status} onChange={event => setUploadForm(previous => ({ ...previous, status: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm">{budgetStatuses.map(status => <option key={status}>{status}</option>)}</select></label><label className="block text-sm">Fecha de emisión<input type="date" value={uploadForm.issued_date} onChange={event => setUploadForm(previous => ({ ...previous, issued_date: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label><label className="block text-sm">Válido hasta<input type="date" value={uploadForm.valid_until} onChange={event => setUploadForm(previous => ({ ...previous, valid_until: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label></div>
+                <label className="block text-sm">Forma de pago<input value={uploadForm.payment_terms} onChange={event => setUploadForm(previous => ({ ...previous, payment_terms: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label><label className="block text-sm">Garantía<input value={uploadForm.warranty} onChange={event => setUploadForm(previous => ({ ...previous, warranty: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label>
+                <button type="submit" disabled={uploading || !uploadForm.file} className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-stone-700 px-4 text-sm font-medium text-white disabled:opacity-50">{uploading && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />}{uploading ? 'Guardando…' : analysisState === 'ready' ? 'Aprobar borrador y guardar' : 'Guardar presupuesto'}</button>
+              </>}
             </div>
           </form>
         </div>

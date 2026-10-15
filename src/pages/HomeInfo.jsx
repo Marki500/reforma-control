@@ -49,10 +49,12 @@ export default function HomeInfo() {
 
   if (loading) return <div className="flex justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-stone-600" /></div>
 
-  return <div className="mx-auto max-w-5xl space-y-5"><form onSubmit={submit} className="space-y-5">
-    <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-end sm:justify-between"><div><p className="mb-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-terracotta">Ficha del inmueble</p><h1 className="text-2xl font-semibold text-stone-800">Información de la vivienda</h1><p className="mt-1 text-sm text-stone-500">Datos importantes de la casa, contratos y documentación.</p></div>{editing ? <Button type="submit" disabled={saving}><Save size={16} />{saving ? 'Guardando…' : 'Guardar cambios'}</Button> : role === 'viewer' ? <span className="rounded-xl bg-stone-200 px-3 py-2 text-sm text-stone-500">Acceso de solo lectura</span> : <Button type="button" variant="secondary" onClick={() => setEditing(true)}><Pencil size={16} />Editar información</Button>}</div>
+  return <div className="mx-auto max-w-5xl space-y-5">
+    <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-end sm:justify-between"><div><p className="mb-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-terracotta">Ficha del inmueble</p><h1 className="text-2xl font-semibold text-stone-800">Información de la vivienda</h1><p className="mt-1 text-sm text-stone-500">Datos importantes de la casa, contratos y documentación.</p></div>{editing ? <Button type="submit" form="home-info-form" disabled={saving}><Save size={16} />{saving ? 'Guardando…' : 'Guardar cambios'}</Button> : role === 'viewer' ? <span className="rounded-xl bg-stone-200 px-3 py-2 text-sm text-stone-500">Acceso de solo lectura</span> : <Button type="button" variant="secondary" onClick={() => setEditing(true)}><Pencil size={16} />Editar información</Button>}</div>
     {error && <div role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</div>}
     {saved && <div role="status" className="rounded-xl bg-green-50 p-4 text-sm text-green-800">Información guardada correctamente.</div>}
+
+    <form id="home-info-form" onSubmit={submit} className="space-y-5">
 
     <Section icon={MapPin} title="Identificación y ubicación" description="Dirección y datos que identifican legalmente la vivienda."><div className="grid gap-4 sm:grid-cols-2"><label className="text-sm sm:col-span-2">Dirección<input disabled={!editing} className={inputClass} value={form.address} onChange={e => change('address', e.target.value)} placeholder="Calle, número, piso y puerta" /></label><label className="text-sm">Código postal<input disabled={!editing} className={inputClass} value={form.postal_code} onChange={e => change('postal_code', e.target.value)} /></label><label className="text-sm">Municipio<input disabled={!editing} className={inputClass} value={form.city} onChange={e => change('city', e.target.value)} /></label><label className="text-sm">Provincia<input disabled={!editing} className={inputClass} value={form.province} onChange={e => change('province', e.target.value)} /></label><label className="text-sm">Tipo de vivienda<input disabled={!editing} className={inputClass} value={form.property_type} onChange={e => change('property_type', e.target.value)} placeholder="Piso, casa, adosado…" /></label><label className="text-sm sm:col-span-2">Referencia catastral<input disabled={!editing} className={`${inputClass} uppercase`} value={form.cadastral_reference} onChange={e => change('cadastral_reference', e.target.value)} /></label></div></Section>
 
@@ -64,5 +66,7 @@ export default function HomeInfo() {
 
     <Section icon={Building2} title="Observaciones" description="Cualquier dato de la finca o la vivienda que convenga conservar."><textarea disabled={!editing} rows={5} className={inputClass} value={form.notes} onChange={e => change('notes', e.target.value)} placeholder="ITE, administrador, limitaciones de la comunidad, instalaciones antiguas…" /></Section>
     {editing && <div className="sticky bottom-[5.25rem] z-10 rounded-2xl bg-stone-900/95 p-3 shadow-xl backdrop-blur lg:bottom-4"><Button type="submit" className="w-full" disabled={saving}><Save size={16} />{saving ? 'Guardando…' : 'Guardar información de la vivienda'}</Button></div>}
-  </form><HomeDocuments canEdit={role !== 'viewer'} /></div>
+    </form>
+    <HomeDocuments canEdit={role !== 'viewer'} />
+  </div>
 }

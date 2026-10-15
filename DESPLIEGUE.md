@@ -26,6 +26,29 @@ Después sube el código y reconstruye la aplicación en Coolify. En `/api/healt
 
 No ejecutes `npm run migrate` para esta función: ese script antiguo no incluye `00022_shared_workspace.sql`.
 
+Si `00022_shared_workspace.sql` ya se ejecutó antes de incorporar la creación y el cambio de nombre de reformas, ejecuta después `supabase/migrations/00023_project_management.sql`. Esta migración añade únicamente las funciones `create_project` y `update_project`, conserva todos los datos y solicita a PostgREST que recargue su caché de esquema.
+
+### Correos de NIVEL e invitaciones automáticas
+
+En el servicio de la aplicación configura, solo como variables de servidor: `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`, `MAIL_FROM_EMAIL`, `MAIL_FROM_NAME` y `APP_PUBLIC_URL`. Las dos claves de Mailjet nunca deben llevar el prefijo `VITE_`. La URL pública no debe terminar en `/`.
+
+Para sustituir los correos predeterminados de Supabase Auth, añade estas variables al servicio de Supabase, cambiando `https://TU-DOMINIO-NIVEL` por la URL pública real de la aplicación:
+
+```env
+MAILER_TEMPLATES_CONFIRMATION=https://TU-DOMINIO-NIVEL/email-templates/confirmation.html
+MAILER_TEMPLATES_RECOVERY=https://TU-DOMINIO-NIVEL/email-templates/recovery.html
+MAILER_TEMPLATES_MAGIC_LINK=https://TU-DOMINIO-NIVEL/email-templates/magic-link.html
+MAILER_TEMPLATES_EMAIL_CHANGE=https://TU-DOMINIO-NIVEL/email-templates/email-change.html
+MAILER_TEMPLATES_INVITE=https://TU-DOMINIO-NIVEL/email-templates/invite.html
+MAILER_SUBJECTS_CONFIRMATION=Confirma tu cuenta en NIVEL
+MAILER_SUBJECTS_RECOVERY=Recupera el acceso a NIVEL
+MAILER_SUBJECTS_MAGIC_LINK=Tu enlace para entrar en NIVEL
+MAILER_SUBJECTS_EMAIL_CHANGE=Confirma tu nuevo correo en NIVEL
+MAILER_SUBJECTS_INVITE=Te han invitado a NIVEL
+```
+
+Despliega primero la aplicación para que las URLs de plantilla existan y después reinicia Supabase Auth. Si Auth no puede descargar una plantilla válida, utilizará automáticamente su diseño predeterminado.
+
 ## Instalar NIVEL en el móvil
 
 NIVEL incluye manifest, service worker e iconos propios, por lo que puede instalarse como PWA después de desplegarla por HTTPS. No necesita una aplicación separada ni publicación en las tiendas.

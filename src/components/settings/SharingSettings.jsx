@@ -3,6 +3,7 @@ import { Copy, Mail, Trash2, UserPlus, Users } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import ConfirmDialog from '../ui/ConfirmDialog'
+import { authenticatedRequest } from '../../services/uploadService'
 import {
   cancelWorkspaceInvitation, createWorkspaceInvitation, getWorkspaceContext,
   getWorkspaceInvitations, getWorkspaceMembers, getUserProjects, removeWorkspaceMember, switchProject,
@@ -48,11 +49,31 @@ export default function SharingSettings() {
       const token = await createWorkspaceInvitation(email)
       const url = inviteUrl(token)
       await navigator.clipboard?.writeText(url).catch(() => {})
-      setNotice('Invitación creada. El enlace se ha copiado; envíaselo a esa persona.')
+      try {
+        await sendInvitationEmail(token)
+        setNotice(`Invitación enviada a ${email.trim()}. También hemos copiado el enlace.`)
+      } catch (mailError) {
+        setNotice('Invitación creada y enlace copiado.')
+        setError(mailError.message || 'No se pudo enviar el correo; puedes compartir el enlace manualmente.')
+      }
       setEmail('')
       await load()
     } catch (err) {
       setError(err.message || 'No se pudo crear la invitación.')
+    } finally { setBusy(false) }
+  }
+
+  async function sendInvitationEmail(token) {
+    return authenticatedRequest('/api/send-project-invitation', JSON.stringify({ token }), { 'Content-Type': 'application/json' })
+  }
+
+  async function resendInvitation(invitation) {
+    setBusy(true); setError(''); setNotice('')
+    try {
+      await sendInvitationEmail(invitation.token)
+      setNotice(`Invitación reenviada a ${invitation.email}.`)
+    } catch (err) {
+      setError(err.message || 'No se pudo reenviar la invitación.')
     } finally { setBusy(false) }
   }
 
@@ -82,7 +103,7 @@ export default function SharingSettings() {
     </div>
     {context?.role === 'owner' && <>
       <form onSubmit={invite} className="flex flex-col gap-3 rounded-2xl bg-stone-50 p-4 sm:flex-row sm:items-end"><div className="flex-1"><Input label="Email de la persona" type="email" placeholder="pareja@email.com" value={email} onChange={event => setEmail(event.target.value)} required /></div><Button type="submit" disabled={busy || !email.trim()}><UserPlus size={16} />{busy ? 'Creando…' : 'Invitar'}</Button></form>
-      {invitations.length > 0 && <div className="space-y-2"><p className="text-xs font-semibold uppercase tracking-wider text-stone-400">Invitaciones pendientes</p>{invitations.map(invitation => <div key={invitation.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-stone-300 px-4 py-3"><div><p className="text-sm text-stone-700">{invitation.email}</p><p className="text-xs text-stone-400">Caduca {new Date(invitation.expires_at).toLocaleDateString('es-ES')}</p></div><div className="flex gap-1"><button type="button" onClick={() => copyInvitation(invitation.token)} className="rounded-lg p-2 text-stone-500 hover:bg-stone-100" title="Copiar enlace"><Copy size={16} /></button><a href={`mailto:${invitation.email}?subject=${encodeURIComponent('Te invito a nuestra reforma en NIVEL')}&body=${encodeURIComponent(`Únete al proyecto desde este enlace: ${inviteUrl(invitation.token)}`)}`} className="rounded-lg p-2 text-stone-500 hover:bg-stone-100" title="Enviar por email"><Mail size={16} /></a><button type="button" onClick={() => cancel(invitation.id)} className="rounded-lg p-2 text-stone-500 hover:bg-red-50 hover:text-red-500" title="Cancelar"><Trash2 size={16} /></button></div></div>)}</div>}
+      {invitations.length > 0 && <div className="space-y-2"><p className="text-xs font-semibold uppercase tracking-wider text-stone-400">Invitaciones pendientes</p>{invitations.map(invitation => <div key={invitation.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-stone-300 px-4 py-3"><div><p className="text-sm text-stone-700">{invitation.email}</p><p className="text-xs text-stone-400">Caduca {new Date(invitation.expires_at).toLocaleDateString('es-ES')}</p></div><div className="flex gap-1"><button type="button" onClick={() => copyInvitation(invitation.token)} className="rounded-lg p-2 text-stone-500 hover:bg-stone-100" title="Copiar enlace"><Copy size={16} /></button><button type="button" disabled={busy} onClick={() => resendInvitation(invitation)} className="rounded-lg p-2 text-stone-500 hover:bg-stone-100 disabled:opacity-40" title="Reenviar por email"><Mail size={16} /></button><button type="button" onClick={() => cancel(invitation.id)} className="rounded-lg p-2 text-stone-500 hover:bg-red-50 hover:text-red-500" title="Cancelar"><Trash2 size={16} /></button></div></div>)}</div>}
     </>}
     {context && context.role !== 'owner' && <p className="text-xs leading-relaxed text-stone-400">El propietario del proyecto gestiona las invitaciones y puede retirar accesos.</p>}
     <ConfirmDialog open={Boolean(removeMember)} title="Retirar acceso" message={`¿Retirar el acceso de ${removeMember?.email || 'esta persona'}? Su cuenta se conservará, pero dejará de ver este proyecto.`} onConfirm={confirmRemove} onCancel={() => setRemoveMember(null)} />

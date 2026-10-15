@@ -9,6 +9,7 @@ import * as cheerio from 'cheerio'
 import multer from 'multer'
 import { fetchRemote, normalizeRemoteUrl, RemoteFetchError } from './server/remoteFetch.js'
 import { budgetAnalysisPrompt, budgetAnalysisSchema, sanitizeBudgetAnalysis } from './server/budgetAnalysis.js'
+import { renderProjectInvitation, sendMailjetEmail } from './server/mailjet.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const uploadsDir = path.join(__dirname, 'uploads')
@@ -40,6 +41,12 @@ const openRouterModel = process.env.OPENROUTER_MODEL || 'openrouter/free'
 const openRouterPdfEngine = process.env.OPENROUTER_PDF_ENGINE || 'pdf-text'
 const aiRequestTimes = new Map()
 const aiAnalysisJobs = new Map()
+const mailjetApiKey = process.env.MAILJET_API_KEY || ''
+const mailjetSecretKey = process.env.MAILJET_SECRET_KEY || ''
+const mailFromEmail = process.env.MAIL_FROM_EMAIL || 'notificaciones@noxumlab.com'
+const mailFromName = process.env.MAIL_FROM_NAME || 'NIVEL'
+const appPublicUrl = (process.env.APP_PUBLIC_URL || '').replace(/\/$/, '')
+const invitationEmailTimes = new Map()
 
 async function requireSession(req, res, next) {
   const authorization = req.get('Authorization')
@@ -81,10 +88,67 @@ app.get('/api/health', (_req, res) => {
   const configured = aiProvider === 'openrouter' ? Boolean(openRouterApiKey) : aiProvider === 'gemini' && Boolean(geminiApiKey)
   res.status(200).json({
     status: 'ok',
-    release: 'multi-project-sharing-v1',
-    features: { ai_budget_async: 4 },
+    release: 'project-invitation-email-v1',
+    features: { ai_budget_async: 4, project_invitation_email: 1 },
     ai: { provider: aiProvider, model: aiProvider === 'openrouter' ? openRouterModel : aiModel, configured },
+    mail: { provider: 'mailjet', configured: Boolean(mailjetApiKey && mailjetSecretKey && appPublicUrl) },
   })
+})
+
+app.post('/api/send-project-invitation', requireSession, async (req, res) => {
+  const token = String(req.body?.token || '')
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)) {
+    return res.status(400).json({ error: 'La invitación no es válida.', code: 'INVALID_INVITATION', request_id: req.requestId })
+  }
+  if (!mailjetApiKey || !mailjetSecretKey || !appPublicUrl) {
+    return res.status(503).json({ error: 'El envío automático todavía no está configurado en el servidor.', code: 'MAIL_NOT_CONFIGURED', request_id: req.requestId })
+  }
+  const lastSentAt = invitationEmailTimes.get(req.authUser.id) || 0
+  if (Date.now() - lastSentAt < 5000) {
+    return res.status(429).json({ error: 'Espera unos segundos antes de enviar otra invitación.', code: 'MAIL_RATE_LIMIT', request_id: req.requestId })
+  }
+
+  try {
+    const projectId = await getRequestProjectId(req)
+    const headers = { Authorization: req.uploadAuthorization, apikey: supabaseKey, 'Content-Type': 'application/json' }
+    const invitationResponse = await fetch(`${supabaseUrl}/rest/v1/project_invitations?select=email,expires_at&token=eq.${encodeURIComponent(token)}&project_id=eq.${projectId}&accepted_at=is.null&limit=1`, {
+      headers,
+      signal: AbortSignal.timeout(15000),
+    })
+    const invitations = await invitationResponse.json().catch(() => [])
+    if (!invitationResponse.ok) throw new Error('No se pudo comprobar la invitación.')
+    const invitation = invitations?.[0]
+    if (!invitation || new Date(invitation.expires_at) <= new Date()) {
+      return res.status(404).json({ error: 'La invitación no existe o ha caducado.', code: 'INVITATION_NOT_FOUND', request_id: req.requestId })
+    }
+
+    const contextResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/get_workspace_context`, {
+      method: 'POST', headers, body: '{}', signal: AbortSignal.timeout(15000),
+    })
+    const contexts = await contextResponse.json().catch(() => [])
+    if (!contextResponse.ok || !contexts?.[0]) throw new Error('No se pudo identificar la reforma.')
+    const context = contexts[0]
+    const inviteUrl = `${appPublicUrl}/invite/${token}`
+    const message = renderProjectInvitation({
+      projectName: context.project_name || 'Mi reforma',
+      inviterEmail: req.authUser.email || 'Una persona',
+      inviteUrl,
+    })
+    invitationEmailTimes.set(req.authUser.id, Date.now())
+    await sendMailjetEmail({
+      apiKey: mailjetApiKey,
+      secretKey: mailjetSecretKey,
+      fromEmail: mailFromEmail,
+      fromName: mailFromName,
+      toEmail: invitation.email,
+      requestId: req.requestId,
+      ...message,
+    })
+    return res.json({ sent: true, email: invitation.email, request_id: req.requestId })
+  } catch (error) {
+    console.error('[project invitation email:error]', { requestId: req.requestId, userId: req.authUser.id, message: error?.message || 'Unknown error' })
+    return res.status(502).json({ error: 'La invitación se creó, pero Mailjet no pudo enviar el correo.', code: 'MAIL_SEND_FAILED', request_id: req.requestId })
+  }
 })
 
 app.post('/api/import-product', requireSession, async (req, res) => {

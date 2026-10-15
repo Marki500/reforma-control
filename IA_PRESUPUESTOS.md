@@ -1,8 +1,19 @@
-# Propuesta de IA para presupuestos
+# IA para presupuestos
 
-Esta integración todavía no está implementada. Tareas es la primera pieza para poder convertir un presupuesto en acciones útiles.
+La aplicación analiza el PDF en segundo plano, presenta un borrador editable y solo guarda el presupuesto después de la aprobación del usuario. El proveedor se elige en el servidor; las claves nunca llegan al navegador.
 
-## Flujo propuesto
+## OpenRouter gratuito
+
+```env
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=...
+OPENROUTER_MODEL=openrouter/free
+OPENROUTER_PDF_ENGINE=pdf-text
+```
+
+`pdf-text` funciona para PDF con texto seleccionable. Los documentos escaneados necesitan un motor OCR. Para volver a Gemini, usa `AI_PROVIDER=gemini` y configura `GEMINI_API_KEY`.
+
+## Flujo
 
 1. Seleccionar un presupuesto PDF ya subido.
 2. Extraer su texto. Si es un escaneo sin texto, necesitará OCR.

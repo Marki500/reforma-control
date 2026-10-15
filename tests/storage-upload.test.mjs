@@ -46,6 +46,7 @@ test('pinned DNS lookup supports Node single and multi-address modes', async () 
 
 test('uploads require a valid user and forward that user to Storage', async () => {
   const uploads = []
+  const openRouterRequests = []
   const mock = http.createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json')
     if (req.url === '/auth/v1/user') {
@@ -57,6 +58,13 @@ test('uploads require a valid user and forward that user to Storage', async () =
     if (req.url.includes(':generateContent')) {
       for await (const _chunk of req) {}
       res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ is_budget: true, document_title: 'Presupuesto de prueba', supplier_name: '', quote_number: '', issued_date: '', valid_until: '', suggested_category: '', subtotal: 100, tax_rate: 21, tax_amount: 21, total_amount: 121, payment_terms: '', warranty: '', notes: '', line_items: [], warnings: [] }) }] } }] }))
+      return
+    }
+    if (req.url === '/chat/completions') {
+      const chunks = []
+      for await (const chunk of req) chunks.push(chunk)
+      openRouterRequests.push({ headers: req.headers, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) })
+      res.end(JSON.stringify({ model: 'free-test-model', choices: [{ message: { content: JSON.stringify({ is_budget: true, document_title: 'Presupuesto de prueba', supplier_name: '', quote_number: '', issued_date: '', valid_until: '', suggested_category: '', subtotal: 100, tax_rate: 21, tax_amount: 21, total_amount: 121, payment_terms: '', warranty: '', notes: '', line_items: [], warnings: [] }) } }] }))
       return
     }
     if (req.url === '/upload/v1beta/files') {
@@ -89,7 +97,7 @@ test('uploads require a valid user and forward that user to Storage', async () =
   await new Promise(resolve => reservation.close(resolve))
   const child = spawn(process.execPath, ['server.js'], {
     cwd: new URL('..', import.meta.url),
-    env: { ...process.env, PORT: String(port), SUPABASE_URL: mockUrl, SUPABASE_ANON_KEY: 'test-anon-key', GEMINI_API_KEY: 'test-gemini-key', GEMINI_API_BASE_URL: mockUrl, AI_MODEL: 'gemini-3.8-flash' },
+    env: { ...process.env, PORT: String(port), SUPABASE_URL: mockUrl, SUPABASE_ANON_KEY: 'test-anon-key', AI_PROVIDER: 'openrouter', OPENROUTER_API_KEY: 'test-openrouter-key', OPENROUTER_API_BASE_URL: mockUrl, OPENROUTER_MODEL: 'openrouter/free' },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   let log = ''
@@ -98,12 +106,14 @@ test('uploads require a valid user and forward that user to Storage', async () =
   const base = `http://127.0.0.1:${port}`
   try {
     let ready = false
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 120; i++) {
       try { ready = (await fetch(`${base}/api/health`)).ok } catch {}
       if (ready) break
       await new Promise(resolve => setTimeout(resolve, 100))
     }
     assert.ok(ready, log)
+    const health = await (await fetch(`${base}/api/health`)).json()
+    assert.deepEqual(health.ai, { provider: 'openrouter', model: 'openrouter/free', configured: true })
     for (const endpoint of ['upload-file', 'upload-pdf', 'upload-document', 'upload-image', 'import-product', 'extract-inspiration', 'analyze-budget']) {
       const anonymous = await fetch(`${base}/api/${endpoint}`, { method: 'POST' })
       assert.equal(anonymous.status, 401)
@@ -144,6 +154,12 @@ test('uploads require a valid user and forward that user to Storage', async () =
     }
     assert.equal(analysisResult.status, 'complete')
     assert.equal(analysisResult.draft.total_amount, 121)
+    assert.equal(analysisResult.provider, 'openrouter')
+    assert.equal(analysisResult.model, 'free-test-model')
+    assert.equal(openRouterRequests.length, 1)
+    assert.equal(openRouterRequests[0].headers.authorization, 'Bearer test-openrouter-key')
+    assert.equal(openRouterRequests[0].body.plugins[0].pdf.engine, 'pdf-text')
+    assert.match(openRouterRequests[0].body.messages[0].content[1].file.file_data, /^data:application\/pdf;base64,/)
     assert.equal(uploads.length, 2)
     for (const upload of uploads) {
       assert.equal(upload.headers.authorization, 'Bearer test-user-token')

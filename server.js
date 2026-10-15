@@ -33,6 +33,11 @@ const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY ||
 const geminiApiBaseUrl = (process.env.GEMINI_API_BASE_URL || 'https://generativelanguage.googleapis.com').replace(/\/$/, '')
 const aiModel = process.env.AI_MODEL || 'gemini-3.8-flash'
 const aiFallbackModels = [...new Set([aiModel, 'gemini-3.8-flash', 'gemini-3.6-flash'])]
+const aiProvider = (process.env.AI_PROVIDER || 'gemini').trim().toLowerCase()
+const openRouterApiKey = process.env.OPENROUTER_API_KEY || ''
+const openRouterApiBaseUrl = (process.env.OPENROUTER_API_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/$/, '')
+const openRouterModel = process.env.OPENROUTER_MODEL || 'openrouter/free'
+const openRouterPdfEngine = process.env.OPENROUTER_PDF_ENGINE || 'pdf-text'
 const aiRequestTimes = new Map()
 const aiAnalysisJobs = new Map()
 
@@ -58,7 +63,13 @@ async function requireSession(req, res, next) {
 
 // Health check for Coolify / load balancers
 app.get('/api/health', (_req, res) => {
-  res.status(200).json({ status: 'ok', release: 'ai-budget-async-v3', features: { ai_budget_async: 3 } })
+  const configured = aiProvider === 'openrouter' ? Boolean(openRouterApiKey) : aiProvider === 'gemini' && Boolean(geminiApiKey)
+  res.status(200).json({
+    status: 'ok',
+    release: 'ai-budget-providers-v4',
+    features: { ai_budget_async: 4 },
+    ai: { provider: aiProvider, model: aiProvider === 'openrouter' ? openRouterModel : aiModel, configured },
+  })
 })
 
 app.post('/api/import-product', requireSession, async (req, res) => {
@@ -519,16 +530,71 @@ async function requestBudgetAnalysis(file) {
   }
 }
 
+function getOpenRouterText(payload) {
+  const content = payload?.choices?.[0]?.message?.content
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) return content.map(part => part?.text || '').join('')
+  return ''
+}
+
+async function requestOpenRouterBudgetAnalysis(file) {
+  const fileData = `data:application/pdf;base64,${file.buffer.toString('base64')}`
+  const response = await fetch(`${openRouterApiBaseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${openRouterApiKey}`,
+      'HTTP-Referer': process.env.APP_PUBLIC_URL || 'https://nivel.app',
+      'X-Title': 'NIVEL',
+    },
+    signal: AbortSignal.timeout(120000),
+    body: JSON.stringify({
+      model: openRouterModel,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: `${budgetAnalysisPrompt}\nDevuelve exclusivamente un objeto JSON valido que cumpla este esquema: ${JSON.stringify(budgetAnalysisSchema)}` },
+          { type: 'file', file: { filename: file.originalname || 'presupuesto.pdf', file_data: fileData } },
+        ],
+      }],
+      plugins: [{ id: 'file-parser', pdf: { engine: openRouterPdfEngine } }],
+      response_format: { type: 'json_object' },
+      temperature: 0.1,
+      max_tokens: 8192,
+    }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const error = new Error(payload?.error?.message || `OpenRouter respondió con HTTP ${response.status}.`)
+    error.status = response.status
+    throw error
+  }
+  const text = getOpenRouterText(payload)
+  const jsonText = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+  if (!jsonText) throw new Error('La IA no devolvió datos para este documento.')
+  try {
+    return { draft: sanitizeBudgetAnalysis(JSON.parse(jsonText)), model: payload?.model || openRouterModel }
+  } catch {
+    throw new Error('La IA devolvió una respuesta que no se pudo interpretar. Inténtalo de nuevo.')
+  }
+}
+
+function requestConfiguredBudgetAnalysis(file) {
+  if (aiProvider === 'openrouter') return requestOpenRouterBudgetAnalysis(file)
+  return requestBudgetAnalysis(file)
+}
+
 function classifyAIError(error) {
+  const providerName = aiProvider === 'openrouter' ? 'OpenRouter' : 'Gemini'
   const message = error instanceof Error ? error.message : ''
   if (error?.name === 'TimeoutError' || error?.name === 'AbortError' || /timeout|timed out/i.test(message)) {
     return { status: 504, code: 'AI_TIMEOUT', message: 'La IA tardó demasiado en procesar el PDF.' }
   }
-  if (error?.status === 429) return { status: 429, code: 'AI_RATE_LIMIT', message: 'Se ha alcanzado temporalmente el límite gratuito de Gemini.' }
-  if ([401, 403].includes(error?.status)) return { status: 503, code: 'AI_KEY_REJECTED', message: 'Gemini ha rechazado la clave API configurada.' }
-  if (error?.status === 404) return { status: 503, code: 'AI_MODEL_NOT_FOUND', message: `Ninguno de los modelos configurados está disponible para esta clave (${(error.triedModels || [aiModel]).join(', ')}).` }
-  if (error?.status === 400) return { status: 502, code: 'AI_REQUEST_REJECTED', message: 'Gemini ha rechazado el PDF o la configuración del modelo.' }
-  if (/fetch failed|network|ENOTFOUND|ECONN/i.test(message)) return { status: 502, code: 'AI_CONNECTION', message: 'El servidor no ha podido conectarse con Gemini.' }
+  if (error?.status === 429) return { status: 429, code: 'AI_RATE_LIMIT', message: `Se ha alcanzado temporalmente el límite gratuito de ${providerName}.` }
+  if ([401, 403].includes(error?.status)) return { status: 503, code: 'AI_KEY_REJECTED', message: `${providerName} ha rechazado la clave API configurada.` }
+  if (error?.status === 404) return { status: 503, code: 'AI_MODEL_NOT_FOUND', message: aiProvider === 'openrouter' ? `El modelo ${openRouterModel} no está disponible en OpenRouter.` : `Ninguno de los modelos configurados está disponible para esta clave (${(error.triedModels || [aiModel]).join(', ')}).` }
+  if (error?.status === 400) return { status: 502, code: 'AI_REQUEST_REJECTED', message: `${providerName} ha rechazado el PDF o la configuración del modelo.` }
+  if (/fetch failed|network|ENOTFOUND|ECONN/i.test(message)) return { status: 502, code: 'AI_CONNECTION', message: `El servidor no ha podido conectarse con ${providerName}.` }
   if (/no devolvió datos|no se pudo interpretar/i.test(message)) return { status: 502, code: 'AI_INVALID_RESPONSE', message }
   return { status: 502, code: 'AI_UNKNOWN', message: 'No se pudo completar el análisis con IA.' }
 }
@@ -537,8 +603,8 @@ async function runBudgetAnalysisJob(jobId, file, diagnostic) {
   const startedAt = Date.now()
   console.info('[AI budget analysis:start]', { ...diagnostic, bytes: file.size })
   try {
-    const { draft, model } = await requestBudgetAnalysis(file)
-    aiAnalysisJobs.set(jobId, { ...aiAnalysisJobs.get(jobId), status: 'complete', draft, model })
+    const { draft, model } = await requestConfiguredBudgetAnalysis(file)
+    aiAnalysisJobs.set(jobId, { ...aiAnalysisJobs.get(jobId), status: 'complete', draft, model, provider: aiProvider })
     console.info('[AI budget analysis:success]', { ...diagnostic, selectedModel: model, durationMs: Date.now() - startedAt, lineItems: draft.line_items.length })
   } catch (error) {
     const classified = classifyAIError(error)
@@ -548,9 +614,11 @@ async function runBudgetAnalysisJob(jobId, file, diagnostic) {
 }
 
 app.post('/api/analyze-budget', requireSession, pdfUpload.single('file'), (req, res) => {
-  const diagnostic = { requestId: req.requestId, userId: req.authUser.id, model: aiModel }
+  const selectedModel = aiProvider === 'openrouter' ? openRouterModel : aiModel
+  const diagnostic = { requestId: req.requestId, userId: req.authUser.id, provider: aiProvider, model: selectedModel }
   if (!req.file) return res.status(400).json({ error: 'Selecciona un archivo PDF válido.', code: 'INVALID_PDF', request_id: req.requestId })
-  if (!geminiApiKey) return res.status(503).json({ error: 'La IA todavía no está configurada en el servidor.', code: 'AI_NOT_CONFIGURED', request_id: req.requestId })
+  if (!['gemini', 'openrouter'].includes(aiProvider)) return res.status(503).json({ error: `El proveedor de IA “${aiProvider}” no es válido. Usa gemini u openrouter.`, code: 'AI_PROVIDER_INVALID', request_id: req.requestId })
+  if ((aiProvider === 'gemini' && !geminiApiKey) || (aiProvider === 'openrouter' && !openRouterApiKey)) return res.status(503).json({ error: `Falta configurar la clave de ${aiProvider === 'openrouter' ? 'OpenRouter' : 'Gemini'} en el servidor.`, code: 'AI_NOT_CONFIGURED', request_id: req.requestId })
   if (req.file.size > 14 * 1024 * 1024) return res.status(413).json({ error: 'Para analizarlo con IA, el PDF debe ocupar como máximo 14 MB.', code: 'PDF_TOO_LARGE', request_id: req.requestId })
 
   const userId = req.authUser.id
@@ -579,7 +647,7 @@ app.get('/api/analyze-budget/:jobId', (req, res) => {
   }
   if (job.status === 'processing') return res.status(202).json({ status: 'processing', request_id: job.requestId })
   if (job.status === 'error') return res.status(job.failure.status).json({ error: job.failure.message, code: job.failure.code, request_id: job.requestId })
-  return res.json({ status: 'complete', draft: job.draft, model: job.model, request_id: job.requestId })
+  return res.json({ status: 'complete', draft: job.draft, provider: job.provider, model: job.model, request_id: job.requestId })
 })
 
 app.post('/api/upload-file', requireSession, upload.single('file'), async (req, res) => {

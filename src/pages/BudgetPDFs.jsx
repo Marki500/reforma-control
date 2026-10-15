@@ -56,6 +56,7 @@ export default function BudgetPDFs() {
   const [analysisResult, setAnalysisResult] = useState(null)
   const [analysisError, setAnalysisError] = useState('')
   const [aiUsage, setAiUsage] = useState(null)
+  const [aiUsageError, setAiUsageError] = useState('')
   const [editingPdf, setEditingPdf] = useState(null)
   const [editForm, setEditForm] = useState(emptyMetadata)
   const [accepting, setAccepting] = useState(null)
@@ -64,16 +65,17 @@ export default function BudgetPDFs() {
 
   const load = async () => {
     try {
-      const [pdfsData, cats, supplierList, usage] = await Promise.all([
+      const [pdfsData, cats, supplierList, usageResult] = await Promise.all([
         getBudgetPDFs(),
         getCategories(),
         getSuppliers(),
-        getAIUsage().catch(() => null),
+        getAIUsage().then(data => ({ data })).catch(error => ({ error })),
       ])
       setPdfs(pdfsData)
       setCategories(cats)
       setSuppliers(supplierList.filter(item => item.status !== 'Archivado'))
-      setAiUsage(usage)
+      setAiUsage(usageResult.data || null)
+      setAiUsageError(usageResult.error?.message || '')
     } catch (err) {
       setOperationError(err.message || 'No se pudo completar la operación.')
       console.error(err)
@@ -85,8 +87,8 @@ export default function BudgetPDFs() {
   useEffect(() => { load() }, [])
 
   async function refreshAIUsage() {
-    const usage = await getAIUsage().catch(() => null)
-    if (usage) setAiUsage(usage)
+    try { const usage = await getAIUsage(); setAiUsage(usage); setAiUsageError('') }
+    catch (error) { setAiUsage(null); setAiUsageError(error.message || 'No se pudo consultar el contador gratuito.') }
   }
 
   function chooseFile(file) {
@@ -260,6 +262,7 @@ export default function BudgetPDFs() {
         <div className="flex items-center gap-3"><span className={`rounded-xl p-2 ${aiUsage.allowed ? 'bg-white text-olive' : 'bg-white text-amber-700'}`}><Sparkles size={18} /></span><div><p className="text-sm font-semibold text-stone-800">IA gratuita</p><p className="text-xs text-stone-600">Has usado {aiUsage.user_used} de {aiUsage.user_limit} análisis hoy · Cupo global: {aiUsage.global_used} de {aiUsage.global_limit}</p></div></div>
         <span className="text-xs font-medium text-stone-500">Se reinicia a las 00:00</span>
       </div>}
+      {aiUsageError && <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold text-amber-900">No se puede comprobar el cupo gratuito</p><p className="mt-1 text-xs text-amber-800">Por seguridad, NIVEL no enviará documentos a la IA hasta recuperar el contador.</p></div><Button type="button" size="sm" variant="secondary" onClick={refreshAIUsage}>Reintentar</Button></div>}
 
       {pdfs.length > 0 && (
         <div className="space-y-3 rounded-2xl bg-white p-3 shadow-sm sm:p-4">

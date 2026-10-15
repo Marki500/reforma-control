@@ -46,6 +46,8 @@ Después de `00025`, ejecuta una vez `supabase/migrations/00026_ai_usage_limits.
 
 Mantén `OPENROUTER_MODEL=openrouter/free`, `OPENROUTER_PDF_ENGINE=pdf-text` y `AI_FREE_ONLY=true`. Con el modo gratuito activado, el servidor rechaza cualquier configuración distinta que pueda generar costes. Tras el deploy, `/api/health` debe mostrar `release: ai-usage-limits-v1`, `ai_usage_limits: 1` y `free_only: true`.
 
+Si el contador devuelve `AI_USAGE_UNAVAILABLE` después de haber aplicado `00026`, ejecuta `supabase/migrations/00027_fix_ai_usage_counter.sql`. Corrige una ambigüedad de PostgreSQL en `usage_date`, conserva los contadores existentes y recarga el esquema de PostgREST.
+
 ### Correos de NIVEL e invitaciones automáticas
 
 En el servicio de la aplicación configura, solo como variables de servidor: `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`, `MAIL_FROM_EMAIL`, `MAIL_FROM_NAME` y `APP_PUBLIC_URL`. Las dos claves de Mailjet nunca deben llevar el prefijo `VITE_`. La URL pública no debe terminar en `/`.

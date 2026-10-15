@@ -115,3 +115,7 @@ export async function analyzeBudgetPDF(file) {
   }
   throw new Error(`El análisis sigue tardando más de lo esperado. Diagnóstico: ${job.request_id}`)
 }
+
+export async function getAIUsage() {
+  return authenticatedGet('/api/ai-usage')
+}

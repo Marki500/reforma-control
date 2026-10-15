@@ -39,6 +39,7 @@ const openRouterApiKey = process.env.OPENROUTER_API_KEY || ''
 const openRouterApiBaseUrl = (process.env.OPENROUTER_API_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/$/, '')
 const openRouterModel = process.env.OPENROUTER_MODEL || 'openrouter/free'
 const openRouterPdfEngine = process.env.OPENROUTER_PDF_ENGINE || 'pdf-text'
+const aiFreeOnly = process.env.AI_FREE_ONLY !== 'false'
 const aiRequestTimes = new Map()
 const aiAnalysisJobs = new Map()
 const mailjetApiKey = process.env.MAILJET_API_KEY || ''
@@ -84,16 +85,50 @@ async function getRequestProjectId(req) {
   return projectId
 }
 
+async function callAIUsageRpc(req, functionName) {
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/${functionName}`, {
+    method: 'POST',
+    headers: { Authorization: req.uploadAuthorization, apikey: supabaseKey, 'Content-Type': 'application/json' },
+    body: '{}',
+    signal: AbortSignal.timeout(15000),
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok || !payload?.[0]) throw new Error(`No se pudo consultar el control de uso de IA (${response.status}).`)
+  return payload[0]
+}
+
 // Health check for Coolify / load balancers
 app.get('/api/health', (_req, res) => {
   const configured = aiProvider === 'openrouter' ? Boolean(openRouterApiKey) : aiProvider === 'gemini' && Boolean(geminiApiKey)
   res.status(200).json({
     status: 'ok',
-    release: 'home-info-explicit-save-v1',
-    features: { ai_budget_async: 4, project_invitation_email: 1, project_comments: 1 },
-    ai: { provider: aiProvider, model: aiProvider === 'openrouter' ? openRouterModel : aiModel, configured },
+    release: 'ai-usage-limits-v1',
+    features: { ai_budget_async: 4, ai_usage_limits: 1, project_invitation_email: 1, project_comments: 1 },
+    ai: { provider: aiProvider, model: aiProvider === 'openrouter' ? openRouterModel : aiModel, configured, free_only: aiFreeOnly },
     mail: { provider: 'mailjet', configured: Boolean(mailjetApiKey && mailjetSecretKey && appPublicUrl) },
   })
+})
+
+app.get('/api/ai-usage', requireSession, async (req, res) => {
+  try {
+    const usage = await callAIUsageRpc(req, 'get_ai_usage_status')
+    let provider = null
+    if (aiProvider === 'openrouter' && openRouterApiKey) {
+      const providerResponse = await fetch(`${openRouterApiBaseUrl}/key`, { headers: { Authorization: `Bearer ${openRouterApiKey}` }, signal: AbortSignal.timeout(10000) })
+      const providerPayload = await providerResponse.json().catch(() => null)
+      if (providerResponse.ok && providerPayload?.data) {
+        provider = {
+          is_free_tier: Boolean(providerPayload.data.is_free_tier), usage_daily: providerPayload.data.usage_daily ?? null,
+          usage_weekly: providerPayload.data.usage_weekly ?? null, usage_monthly: providerPayload.data.usage_monthly ?? null,
+          limit_remaining: providerPayload.data.limit_remaining ?? null, limit_reset: providerPayload.data.limit_reset ?? null,
+        }
+      }
+    }
+    return res.json({ ...usage, provider, free_only: aiFreeOnly, model: aiProvider === 'openrouter' ? openRouterModel : aiModel })
+  } catch (error) {
+    console.error('[AI usage:error]', { requestId: req.requestId, userId: req.authUser.id, message: error?.message || 'Unknown error' })
+    return res.status(503).json({ error: 'No se pudo comprobar el límite gratuito de IA. Por seguridad no se iniciarán análisis.', code: 'AI_USAGE_UNAVAILABLE', request_id: req.requestId })
+  }
 })
 
 app.post('/api/send-project-invitation', requireSession, async (req, res) => {
@@ -667,6 +702,7 @@ async function requestOpenRouterBudgetAnalysis(file) {
       }],
       plugins: [{ id: 'file-parser', pdf: { engine: openRouterPdfEngine } }],
       response_format: { type: 'json_object' },
+      usage: { include: true },
       temperature: 0.1,
       max_tokens: 8192,
     }),
@@ -681,7 +717,7 @@ async function requestOpenRouterBudgetAnalysis(file) {
   const jsonText = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
   if (!jsonText) throw new Error('La IA no devolvió datos para este documento.')
   try {
-    return { draft: sanitizeBudgetAnalysis(JSON.parse(jsonText)), model: payload?.model || openRouterModel }
+    return { draft: sanitizeBudgetAnalysis(JSON.parse(jsonText)), model: payload?.model || openRouterModel, usage: payload?.usage || null }
   } catch {
     throw new Error('La IA devolvió una respuesta que no se pudo interpretar. Inténtalo de nuevo.')
   }
@@ -711,9 +747,9 @@ async function runBudgetAnalysisJob(jobId, file, diagnostic) {
   const startedAt = Date.now()
   console.info('[AI budget analysis:start]', { ...diagnostic, bytes: file.size })
   try {
-    const { draft, model } = await requestConfiguredBudgetAnalysis(file)
-    aiAnalysisJobs.set(jobId, { ...aiAnalysisJobs.get(jobId), status: 'complete', draft, model, provider: aiProvider })
-    console.info('[AI budget analysis:success]', { ...diagnostic, selectedModel: model, durationMs: Date.now() - startedAt, lineItems: draft.line_items.length })
+    const { draft, model, usage } = await requestConfiguredBudgetAnalysis(file)
+    aiAnalysisJobs.set(jobId, { ...aiAnalysisJobs.get(jobId), status: 'complete', draft, model, usage, provider: aiProvider })
+    console.info('[AI budget analysis:success]', { ...diagnostic, selectedModel: model, durationMs: Date.now() - startedAt, lineItems: draft.line_items.length, tokens: usage?.total_tokens ?? null, cost: usage?.cost ?? null })
   } catch (error) {
     const classified = classifyAIError(error)
     aiAnalysisJobs.set(jobId, { ...aiAnalysisJobs.get(jobId), status: 'error', failure: classified })
@@ -721,18 +757,32 @@ async function runBudgetAnalysisJob(jobId, file, diagnostic) {
   }
 }
 
-app.post('/api/analyze-budget', requireSession, pdfUpload.single('file'), (req, res) => {
+app.post('/api/analyze-budget', requireSession, pdfUpload.single('file'), async (req, res) => {
   const selectedModel = aiProvider === 'openrouter' ? openRouterModel : aiModel
   const diagnostic = { requestId: req.requestId, userId: req.authUser.id, provider: aiProvider, model: selectedModel }
   if (!req.file) return res.status(400).json({ error: 'Selecciona un archivo PDF válido.', code: 'INVALID_PDF', request_id: req.requestId })
   if (!['gemini', 'openrouter'].includes(aiProvider)) return res.status(503).json({ error: `El proveedor de IA “${aiProvider}” no es válido. Usa gemini u openrouter.`, code: 'AI_PROVIDER_INVALID', request_id: req.requestId })
   if ((aiProvider === 'gemini' && !geminiApiKey) || (aiProvider === 'openrouter' && !openRouterApiKey)) return res.status(503).json({ error: `Falta configurar la clave de ${aiProvider === 'openrouter' ? 'OpenRouter' : 'Gemini'} en el servidor.`, code: 'AI_NOT_CONFIGURED', request_id: req.requestId })
+  if (aiFreeOnly && (aiProvider !== 'openrouter' || openRouterModel !== 'openrouter/free' || openRouterPdfEngine !== 'pdf-text')) return res.status(503).json({ error: 'La IA está bloqueada porque la configuración actual podría generar costes.', code: 'AI_PAID_CONFIG_BLOCKED', request_id: req.requestId })
   if (req.file.size > 14 * 1024 * 1024) return res.status(413).json({ error: 'Para analizarlo con IA, el PDF debe ocupar como máximo 14 MB.', code: 'PDF_TOO_LARGE', request_id: req.requestId })
 
   const userId = req.authUser.id
   const now = Date.now()
   if (now - (aiRequestTimes.get(userId) || 0) < 5000) {
     return res.status(429).json({ error: 'Espera unos segundos antes de volver a analizar otro documento.', code: 'LOCAL_RATE_LIMIT', request_id: req.requestId })
+  }
+  let usageReservation
+  try {
+    usageReservation = await callAIUsageRpc(req, 'reserve_ai_usage')
+  } catch (error) {
+    console.error('[AI usage reserve:error]', { requestId: req.requestId, userId, message: error?.message || 'Unknown error' })
+    return res.status(503).json({ error: 'No se pudo comprobar el límite gratuito. Por seguridad no se ha enviado nada a la IA.', code: 'AI_USAGE_UNAVAILABLE', request_id: req.requestId })
+  }
+  if (!usageReservation.allowed) {
+    const message = usageReservation.reason === 'user_limit'
+      ? `Has utilizado tus ${usageReservation.user_limit} usos gratuitos de IA de hoy.`
+      : `NIVEL ha alcanzado el límite global de ${usageReservation.global_limit} usos gratuitos de IA de hoy.`
+    return res.status(429).json({ error: `${message} Vuelve a intentarlo mañana.`, code: usageReservation.reason === 'user_limit' ? 'AI_USER_DAILY_LIMIT' : 'AI_GLOBAL_DAILY_LIMIT', usage: usageReservation, request_id: req.requestId })
   }
   aiRequestTimes.set(userId, now)
   if (aiRequestTimes.size > 1000) {
@@ -742,7 +792,7 @@ app.post('/api/analyze-budget', requireSession, pdfUpload.single('file'), (req, 
   const jobId = randomUUID()
   const pollToken = randomUUID()
   aiAnalysisJobs.set(jobId, { userId, pollToken, requestId: req.requestId, status: 'processing', createdAt: now })
-  res.status(202).json({ status: 'processing', job_id: jobId, poll_token: pollToken, request_id: req.requestId })
+  res.status(202).json({ status: 'processing', job_id: jobId, poll_token: pollToken, usage: usageReservation, request_id: req.requestId })
   setImmediate(() => runBudgetAnalysisJob(jobId, req.file, diagnostic))
   const cleanup = setTimeout(() => aiAnalysisJobs.delete(jobId), 10 * 60 * 1000)
   cleanup.unref?.()
@@ -755,7 +805,7 @@ app.get('/api/analyze-budget/:jobId', (req, res) => {
   }
   if (job.status === 'processing') return res.status(202).json({ status: 'processing', request_id: job.requestId })
   if (job.status === 'error') return res.status(job.failure.status).json({ error: job.failure.message, code: job.failure.code, request_id: job.requestId })
-  return res.json({ status: 'complete', draft: job.draft, provider: job.provider, model: job.model, request_id: job.requestId })
+  return res.json({ status: 'complete', draft: job.draft, provider: job.provider, model: job.model, usage: job.usage, request_id: job.requestId })
 })
 
 app.post('/api/upload-file', requireSession, upload.single('file'), async (req, res) => {

@@ -22,6 +22,7 @@ import {
   updateBudgetPDF,
   acceptBudgetPDF,
   analyzeBudgetPDF,
+  getAIUsage,
 } from '../services/budgetPDFService'
 import { getCategories } from '../services/materialsService'
 import { getSuppliers } from '../services/suppliersService'
@@ -54,6 +55,7 @@ export default function BudgetPDFs() {
   const [analysisState, setAnalysisState] = useState('idle')
   const [analysisResult, setAnalysisResult] = useState(null)
   const [analysisError, setAnalysisError] = useState('')
+  const [aiUsage, setAiUsage] = useState(null)
   const [editingPdf, setEditingPdf] = useState(null)
   const [editForm, setEditForm] = useState(emptyMetadata)
   const [accepting, setAccepting] = useState(null)
@@ -62,14 +64,16 @@ export default function BudgetPDFs() {
 
   const load = async () => {
     try {
-      const [pdfsData, cats, supplierList] = await Promise.all([
+      const [pdfsData, cats, supplierList, usage] = await Promise.all([
         getBudgetPDFs(),
         getCategories(),
         getSuppliers(),
+        getAIUsage().catch(() => null),
       ])
       setPdfs(pdfsData)
       setCategories(cats)
       setSuppliers(supplierList.filter(item => item.status !== 'Archivado'))
+      setAiUsage(usage)
     } catch (err) {
       setOperationError(err.message || 'No se pudo completar la operación.')
       console.error(err)
@@ -79,6 +83,11 @@ export default function BudgetPDFs() {
   }
 
   useEffect(() => { load() }, [])
+
+  async function refreshAIUsage() {
+    const usage = await getAIUsage().catch(() => null)
+    if (usage) setAiUsage(usage)
+  }
 
   function chooseFile(file) {
     if (!file || file.type !== 'application/pdf') return
@@ -98,6 +107,10 @@ export default function BudgetPDFs() {
 
   async function analyzeUpload() {
     if (!uploadForm.file || analysisState === 'analyzing') return
+    if (aiUsage && !aiUsage.allowed) {
+      setAnalysisError(aiUsage.reason === 'user_limit' ? `Has agotado tus ${aiUsage.user_limit} usos gratuitos de IA de hoy.` : 'NIVEL ha agotado el cupo gratuito global de IA de hoy.')
+      return
+    }
     if (uploadForm.file.size > 14 * 1024 * 1024) {
       setAnalysisError('Para analizarlo con IA, el PDF debe ocupar como máximo 14 MB. Puedes rellenarlo manualmente.')
       return
@@ -135,7 +148,7 @@ export default function BudgetPDFs() {
     } catch (err) {
       setAnalysisState('idle')
       setAnalysisError(err.message || 'No se pudo analizar el presupuesto.')
-    }
+    } finally { await refreshAIUsage() }
   }
 
   async function handleUpload(event) {
@@ -242,6 +255,11 @@ export default function BudgetPDFs() {
           Subir PDF
         </button>
       </div>
+
+      {aiUsage && <div className={`flex flex-col gap-2 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between ${aiUsage.allowed ? 'border-olive/20 bg-olive-light' : 'border-amber-200 bg-amber-50'}`}>
+        <div className="flex items-center gap-3"><span className={`rounded-xl p-2 ${aiUsage.allowed ? 'bg-white text-olive' : 'bg-white text-amber-700'}`}><Sparkles size={18} /></span><div><p className="text-sm font-semibold text-stone-800">IA gratuita</p><p className="text-xs text-stone-600">Has usado {aiUsage.user_used} de {aiUsage.user_limit} análisis hoy · Cupo global: {aiUsage.global_used} de {aiUsage.global_limit}</p></div></div>
+        <span className="text-xs font-medium text-stone-500">Se reinicia a las 00:00</span>
+      </div>}
 
       {pdfs.length > 0 && (
         <div className="space-y-3 rounded-2xl bg-white p-3 shadow-sm sm:p-4">
@@ -426,8 +444,8 @@ export default function BudgetPDFs() {
 
               {analysisState === 'idle' && uploadForm.file && (
                 <div className="space-y-2">
-                  <button type="button" onClick={analyzeUpload} className="inline-flex min-h-[46px] w-full items-center justify-center gap-2 rounded-xl bg-terracotta px-4 text-sm font-semibold text-white hover:opacity-90">
-                    <Sparkles size={17} /> Analizar con IA
+                  <button type="button" onClick={analyzeUpload} disabled={aiUsage && !aiUsage.allowed} className="inline-flex min-h-[46px] w-full items-center justify-center gap-2 rounded-xl bg-terracotta px-4 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+                    <Sparkles size={17} /> {aiUsage && !aiUsage.allowed ? 'Límite gratuito agotado' : 'Analizar con IA'}
                   </button>
                   <button type="button" onClick={() => { setAnalysisState('manual'); setAnalysisError('') }} className="min-h-[40px] w-full text-xs font-medium text-stone-500 hover:text-stone-800">Rellenar manualmente</button>
                 </div>

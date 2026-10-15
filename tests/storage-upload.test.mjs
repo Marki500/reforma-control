@@ -60,6 +60,11 @@ test('uploads require a valid user and forward that user to Storage', async () =
       res.end(JSON.stringify('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'))
       return
     }
+    if (req.url === '/rest/v1/rpc/reserve_ai_usage') {
+      for await (const _chunk of req) {}
+      res.end(JSON.stringify([{ allowed: true, reason: 'reserved', user_used: 1, user_limit: 5, global_used: 1, global_limit: 40, usage_date: '2026-10-15' }]))
+      return
+    }
     if (req.url.includes(':generateContent')) {
       for await (const _chunk of req) {}
       res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ is_budget: true, document_title: 'Presupuesto de prueba', supplier_name: '', quote_number: '', issued_date: '', valid_until: '', suggested_category: '', subtotal: 100, tax_rate: 21, tax_amount: 21, total_amount: 121, payment_terms: '', warranty: '', notes: '', line_items: [], warnings: [] }) }] } }] }))
@@ -118,7 +123,7 @@ test('uploads require a valid user and forward that user to Storage', async () =
     }
     assert.ok(ready, log)
     const health = await (await fetch(`${base}/api/health`)).json()
-    assert.deepEqual(health.ai, { provider: 'openrouter', model: 'openrouter/free', configured: true })
+    assert.deepEqual(health.ai, { provider: 'openrouter', model: 'openrouter/free', configured: true, free_only: true })
     for (const endpoint of ['upload-file', 'upload-pdf', 'upload-document', 'upload-image', 'import-product', 'extract-inspiration', 'analyze-budget']) {
       const anonymous = await fetch(`${base}/api/${endpoint}`, { method: 'POST' })
       assert.equal(anonymous.status, 401)

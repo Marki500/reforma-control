@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../services/supabaseClient'
 import { Search, LogOut, Menu } from 'lucide-react'
 import NotificationsMenu from './NotificationsMenu'
-import { BrandMark } from '../brand/Brand'
 import GlobalSearch from './GlobalSearch'
+import ProjectSwitcher from './ProjectSwitcher'
 
 export default function Header({ onMenuToggle }) {
   const navigate = useNavigate()
@@ -24,7 +24,7 @@ export default function Header({ onMenuToggle }) {
       >
         <Menu size={20} />
       </button>
-      <BrandMark className="h-7 w-7 text-stone-900 sm:h-8 sm:w-8 lg:hidden" />
+      <div className="min-w-0 lg:hidden"><ProjectSwitcher compact /></div>
 
       <div className="hidden max-w-md flex-1 sm:block"><GlobalSearch /></div>
 

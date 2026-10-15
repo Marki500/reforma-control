@@ -4,6 +4,7 @@ import { BrandLockup } from '../brand/Brand'
 import InstallApp from '../pwa/InstallApp'
 import { X } from 'lucide-react'
 import { navigationLinks } from './navigation'
+import ProjectSwitcher from './ProjectSwitcher'
 
 export default function Sidebar({ onNavigate, onClose }) {
   return (
@@ -14,7 +15,7 @@ export default function Sidebar({ onNavigate, onClose }) {
           {onClose && <button type="button" onClick={onClose} className="-mr-2 rounded-xl p-2.5 text-white/55 hover:bg-white/10 hover:text-white" aria-label="Cerrar navegación"><X size={20} /></button>}
         </div>
         <div className="mt-6 h-px bg-white/10" />
-        <p className="mt-4 text-[0.66rem] font-semibold uppercase tracking-[0.18em] text-white/35">Tu proyecto</p>
+        <div className="mt-4"><ProjectSwitcher inverse /></div>
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">

@@ -29,6 +29,22 @@ export async function getCurrentProjectId() {
 export async function getUserProjects() { const { data, error } = await supabase.rpc('list_user_projects'); if (error) throw error; return data || [] }
 export async function switchProject(projectId) { const { error } = await supabase.rpc('switch_project', { p_project_id: projectId }); if (error) throw error; clearWorkspaceCache() }
 
+export async function createProject(name) {
+  const { data, error } = await supabase.rpc('create_project', { p_name: name.trim() })
+  if (error) throw error
+  clearWorkspaceCache()
+  return data
+}
+
+export async function updateProject(projectId, name) {
+  const { error } = await supabase.rpc('update_project', {
+    p_project_id: projectId,
+    p_name: name.trim(),
+  })
+  if (error) throw error
+  clearWorkspaceCache()
+}
+
 export async function getWorkspaceMembers() {
   const { data, error } = await supabase.rpc('list_workspace_members')
   if (error) throw error

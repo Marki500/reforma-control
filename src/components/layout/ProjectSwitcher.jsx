@@ -13,7 +13,7 @@ import {
 
 const roleLabels = { owner: 'Propietario', editor: 'Puede editar', viewer: 'Solo lectura' }
 
-export default function ProjectSwitcher({ compact = false, inverse = false }) {
+export default function ProjectSwitcher({ compact = false, inverse = false, accountLabel = '' }) {
   const [open, setOpen] = useState(false)
   const [projects, setProjects] = useState([])
   const [current, setCurrent] = useState(null)
@@ -122,6 +122,7 @@ export default function ProjectSwitcher({ compact = false, inverse = false }) {
           <span className={`block truncate font-semibold ${compact ? 'text-sm' : 'mt-0.5 text-[0.94rem]'}`}>
             {loading ? 'Cargando…' : current?.project_name || 'Mi reforma'}
           </span>
+          {compact && accountLabel && <span className="mt-0.5 block truncate text-[0.66rem] font-medium text-stone-500">{accountLabel}</span>}
         </span>
         <ChevronDown size={16} className={`shrink-0 transition-transform group-hover:translate-y-0.5 ${inverse ? 'text-white/40' : 'text-stone-400'}`} />
       </button>

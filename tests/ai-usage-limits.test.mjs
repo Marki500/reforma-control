@@ -3,11 +3,13 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 test('AI usage migration enforces per-user and global daily limits', async () => {
-  const sql = await readFile(new URL('../supabase/migrations/00026_ai_usage_limits.sql', import.meta.url), 'utf8')
-  assert.match(sql, /v_user_used>=5/)
-  assert.match(sql, /v_global_used>=40/)
-  assert.match(sql, /Europe\/Madrid/)
-  assert.match(sql, /pg_advisory_xact_lock/)
+  const schemaSql = await readFile(new URL('../supabase/migrations/00026_ai_usage_limits.sql', import.meta.url), 'utf8')
+  const limitSql = await readFile(new URL('../supabase/migrations/00028_increase_ai_user_daily_limit.sql', import.meta.url), 'utf8')
+  assert.match(schemaSql, /CREATE TABLE IF NOT EXISTS public\.ai_usage_daily/)
+  assert.match(limitSql, /v_user_limit CONSTANT INTEGER:=10/)
+  assert.match(limitSql, /v_global_limit CONSTANT INTEGER:=40/)
+  assert.match(limitSql, /Europe\/Madrid/)
+  assert.match(limitSql, /pg_advisory_xact_lock/)
 })
 
 test('free-only server blocks paid model or PDF engine configuration', async () => {

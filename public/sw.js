@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nivel-shell-v4'
+const CACHE_NAME = 'nivel-shell-v5'
 const APP_SHELL = ['/', '/login', '/manifest.webmanifest', '/nivel-mark.svg', '/icons/icon-192.png', '/icons/icon-512.png']
 
 self.addEventListener('install', event => {

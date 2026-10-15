@@ -124,7 +124,7 @@ export async function analyzeBudgetPDF(file) {
   } catch {
     throw new Error('Fase: comprobación del servidor · No se pudo consultar la versión desplegada.')
   }
-  if (health?.features?.ai_budget_async !== 5) {
+  if (health?.features?.ai_budget_async !== 6) {
     throw new Error(`Fase: comprobación del servidor · Coolify está sirviendo una versión anterior (${health?.release || 'sin versión'}). Haz un redeploy sin caché.`)
   }
   const formData = new FormData()

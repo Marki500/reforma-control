@@ -46,13 +46,13 @@ export default function Header({ onMenuToggle }) {
       <div className="ml-auto flex items-center gap-1 sm:gap-3">
         <button type="button" onClick={() => setMobileSearchOpen(true)} className="rounded-xl p-2.5 text-stone-500 hover:bg-white hover:text-stone-900 sm:hidden" aria-label="Buscar materiales"><Search size={19} /></button>
         <NotificationsMenu />
-        <div className="hidden min-w-0 items-center gap-2.5 rounded-xl bg-white px-2.5 py-1.5 shadow-sm ring-1 ring-stone-200/80 lg:flex" title={accountEmail || displayName}>
+        <button type="button" onClick={() => navigate('/settings')} className="hidden min-w-0 items-center gap-2.5 rounded-xl bg-white px-2.5 py-1.5 text-left shadow-sm ring-1 ring-stone-200/80 transition hover:bg-stone-50 hover:ring-stone-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta lg:flex" title="Abrir ajustes de la cuenta">
           <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-olive-light text-xs font-bold text-olive">{initials}</span>
           <span className="min-w-0 pr-1">
             <span className="block max-w-48 truncate text-xs font-semibold text-stone-800">{displayName}</span>
             {accountEmail && displayName !== accountEmail && <span className="mt-0.5 block max-w-48 truncate text-[0.66rem] text-stone-400">{accountEmail}</span>}
           </span>
-        </div>
+        </button>
         <button
           onClick={handleLogout}
           className="flex items-center gap-2 rounded-xl p-2.5 text-sm text-stone-500 transition-all hover:bg-white hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta sm:px-3 sm:py-2"

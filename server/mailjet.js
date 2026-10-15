@@ -45,7 +45,19 @@ export function renderProjectInvitation({ projectName, inviterEmail, inviteUrl }
   }
 }
 
-export async function sendMailjetEmail({ apiKey, secretKey, fromEmail, fromName, toEmail, subject, text, html, requestId }) {
+export function renderProjectComment({ projectName, authorEmail, comment, appUrl, mentioned }) {
+  const safeProject = escapeHtml(projectName)
+  const safeAuthor = escapeHtml(authorEmail)
+  const safeComment = escapeHtml(comment).replaceAll('\n', '<br>')
+  const safeUrl = escapeHtml(appUrl)
+  return {
+    subject: mentioned ? `${authorEmail} te ha mencionado en ${projectName}` : `Nuevo comentario en ${projectName}`,
+    text: `${authorEmail} ha escrito en “${projectName}”:\n\n${comment}\n\nAbrir NIVEL: ${appUrl}`,
+    html: `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#f0ede5;color:#30352d;font-family:Arial,'Helvetica Neue',sans-serif;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:32px 16px;"><table role="presentation" width="100%" style="max-width:600px"><tr><td style="padding:0 0 18px 4px;font-size:18px;font-weight:800;letter-spacing:2px;">NIVEL</td></tr><tr><td style="overflow:hidden;border-radius:24px;background:#fff;box-shadow:0 14px 44px rgba(66,72,62,.10);"><div style="height:7px;background:#d86d4d"></div><div style="padding:38px 40px 42px;"><p style="margin:0 0 12px;color:#777568;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1.3px;">${mentioned ? 'Te han mencionado' : 'Nuevo comentario'}</p><h1 style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:31px;font-weight:400;color:#252a23;">${safeProject}</h1><p style="margin:20px 0 10px;color:#5d6155;font-size:14px;"><strong>${safeAuthor}</strong> ha escrito:</p><div style="border-left:3px solid #d86d4d;background:#f7f5ef;padding:16px 18px;color:#30352d;font-size:15px;line-height:1.6;">${safeComment}</div><a href="${safeUrl}/settings" style="display:inline-block;margin-top:26px;border-radius:12px;background:#42483e;padding:14px 22px;color:#fff;font-size:14px;font-weight:700;text-decoration:none;">Abrir conversación&nbsp; →</a></div></td></tr></table></td></tr></table></body></html>`,
+  }
+}
+
+export async function sendMailjetEmail({ apiKey, secretKey, fromEmail, fromName, toEmail, subject, text, html, requestId, customId = 'project-invite' }) {
   const response = await fetch('https://api.mailjet.com/v3.1/send', {
     method: 'POST',
     headers: {
@@ -59,7 +71,7 @@ export async function sendMailjetEmail({ apiKey, secretKey, fromEmail, fromName,
         Subject: subject,
         TextPart: text,
         HTMLPart: html,
-        CustomID: `nivel-project-invite-${requestId}`,
+        CustomID: `nivel-${customId}-${requestId}`,
       }],
     }),
     signal: AbortSignal.timeout(15000),

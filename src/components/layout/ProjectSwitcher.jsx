@@ -105,6 +105,7 @@ export default function ProjectSwitcher({ compact = false, inverse = false, acco
   const triggerColors = inverse
     ? 'bg-white/[0.07] text-white hover:bg-white/[0.11] focus-visible:ring-white/40'
     : 'bg-white text-stone-800 shadow-sm ring-1 ring-stone-200 hover:bg-stone-50 focus-visible:ring-terracotta'
+  const activeProjects = projects.filter(project => !project.archived_at)
 
   return (
     <>
@@ -136,7 +137,7 @@ export default function ProjectSwitcher({ compact = false, inverse = false, acco
               <div className="grid min-h-36 place-items-center text-stone-400"><LoaderCircle className="animate-spin" /></div>
             ) : (
               <div className="space-y-2">
-                {projects.map((project) => (
+                {activeProjects.map((project) => (
                   <div key={project.project_id} className={`group flex items-center gap-2 rounded-2xl p-2 transition ${project.is_active ? 'bg-olive-light ring-1 ring-olive/20' : 'bg-stone-50 hover:bg-stone-100'}`}>
                     <button type="button" onClick={() => selectProject(project)} disabled={Boolean(workingId)} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-olive">
                       <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${project.is_active ? 'bg-olive text-white' : 'bg-white text-stone-500 shadow-sm'}`}>

@@ -18,6 +18,7 @@ const HomeInfo = lazy(() => import('./pages/HomeInfo'))
 const AppLayout = lazy(() => import('./components/layout/AppLayout'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 const Invite = lazy(() => import('./pages/Invite'))
+const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 
 function PageLoader() {
   return <div className="flex min-h-[45dvh] items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-stone-700" /></div>
@@ -70,6 +71,7 @@ export default function App() {
         }
       />
       <Route path="/invite/:token" element={<Invite />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route
         path="/"
         element={

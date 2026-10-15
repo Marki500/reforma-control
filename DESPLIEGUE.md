@@ -28,6 +28,16 @@ No ejecutes `npm run migrate` para esta función: ese script antiguo no incluye 
 
 Si `00022_shared_workspace.sql` ya se ejecutó antes de incorporar la creación y el cambio de nombre de reformas, ejecuta después `supabase/migrations/00023_project_management.sql`. Esta migración añade únicamente las funciones `create_project` y `update_project`, conserva todos los datos y solicita a PostgREST que recargue su caché de esquema.
 
+### Activar cuentas, gestión completa y colaboración
+
+Con `00022` y `00023` ya aplicadas, abre Supabase Studio > SQL Editor y ejecuta una sola vez el archivo completo `supabase/migrations/00024_accounts_projects_collaboration.sql`. Hazlo **antes** de desplegar esta versión de la aplicación, porque la nueva interfaz utiliza las funciones creadas por esa migración.
+
+La migración conserva las reformas existentes y las marca como ya configuradas. Añade dirección, descripción, fechas, presupuesto estimado, estado, archivo, duplicado, borrado seguro, roles de colaborador, conversación con menciones, preferencias de correo y registro de actividad. Los avisos de comentarios reutilizan las variables de Mailjet ya configuradas. Los archivos de una reforma se eliminan desde la aplicación antes de borrar sus datos; por eso el borrado debe hacerse desde Ajustes y no directamente desde SQL.
+
+Después reconstruye la aplicación en Coolify. En `/api/health` debe aparecer `release: accounts-projects-collaboration-v1`. Comprueba: recuperar una contraseña; crear una reforma y completar el asistente; editar sus datos; duplicarla; invitar una cuenta como «Solo lectura»; cambiarla a «Puede editar»; modificar una tarea y confirmar que aparece en Actividad. Para probar archivo y borrado deben existir al menos dos reformas activas.
+
+Después de `00024`, ejecuta también `supabase/migrations/00025_fix_home_info_editing.sql`. Sustituye el guardado directo de la ficha de vivienda por funciones con permisos de proyecto explícitos y corrige la edición para propietarios y colaboradores con rol editor. No modifica ni elimina la información existente.
+
 ### Correos de NIVEL e invitaciones automáticas
 
 En el servicio de la aplicación configura, solo como variables de servidor: `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`, `MAIL_FROM_EMAIL`, `MAIL_FROM_NAME` y `APP_PUBLIC_URL`. Las dos claves de Mailjet nunca deben llevar el prefijo `VITE_`. La URL pública no debe terminar en `/`.

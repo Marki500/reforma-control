@@ -11,6 +11,10 @@ import ConfirmDialog from '../components/ui/ConfirmDialog'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import DataTools from '../components/settings/DataTools'
 import SharingSettings from '../components/settings/SharingSettings'
+import AccountSettings from '../components/settings/AccountSettings'
+import ProjectManagement from '../components/settings/ProjectManagement'
+import ProjectActivity from '../components/settings/ProjectActivity'
+import ProjectConversation from '../components/settings/ProjectConversation'
 
 const emptyItem = { name: '' }
 
@@ -163,14 +167,29 @@ export default function Settings() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
+    <div className="mx-auto max-w-4xl space-y-10">
       <div>
         <h1 className="text-2xl font-semibold text-stone-800">Ajustes</h1>
         <p className="mt-1 text-sm text-stone-500">
-          Gestiona las categorías y estancias disponibles en los filtros
+          Tu cuenta, la reforma activa y las personas que colaboran contigo
         </p>
       </div>
       {error && <div role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{error} <button type="button" onClick={loadData} className="font-medium underline">Reintentar</button></div>}
+
+      <AccountSettings />
+
+      <ProjectManagement />
+
+      <SharingSettings />
+
+      <ProjectConversation />
+
+      <ProjectActivity />
+
+      <div className="border-t border-stone-200 pt-8">
+        <h2 className="text-lg font-semibold text-stone-700">Organización de materiales</h2>
+        <p className="mt-1 text-sm text-stone-500">Personaliza las categorías y estancias de esta reforma.</p>
+      </div>
 
       {loading ? (
         <div className="flex justify-center py-12">
@@ -201,8 +220,6 @@ export default function Settings() {
           </section>
         </>
       )}
-
-      <SharingSettings />
 
       <DataTools />
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { supabase } from '../services/supabaseClient'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
@@ -7,12 +7,14 @@ import { BrandLockup, BrandMark } from '../components/brand/Brand'
 
 export default function Login() {
   const [searchParams] = useSearchParams()
+  const location = useLocation()
   const inviteToken = searchParams.get('invite')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [mode, setMode] = useState('login')
+  const [notice, setNotice] = useState(location.state?.passwordUpdated ? 'Contraseña actualizada. Ya puedes entrar.' : '')
 
   useEffect(() => {
     if (inviteToken) localStorage.setItem('nivel_pending_invite', inviteToken)
@@ -24,7 +26,11 @@ export default function Login() {
     setLoading(true)
 
     try {
-      if (mode === 'login') {
+      if (mode === 'recover') {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/reset-password` })
+        if (error) throw error
+        setNotice('Te hemos enviado un enlace para crear una nueva contraseña.')
+      } else if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
       } else {
@@ -60,9 +66,9 @@ export default function Login() {
           <div className="mb-9 lg:hidden"><BrandLockup /></div>
           <div className="mb-7">
             <BrandMark className="mb-6 hidden h-12 w-12 text-stone-900 lg:block" />
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-terracotta">{mode === 'login' ? 'Bienvenido de nuevo' : 'Empieza tu proyecto'}</p>
-            <h2 className="mt-2 font-display text-3xl font-bold tracking-[-0.035em] text-stone-900">{mode === 'login' ? 'Accede a NIVEL' : 'Crea tu cuenta'}</h2>
-            <p className="mt-2 text-sm text-stone-500">{inviteToken ? 'Accede con el email que recibió la invitación.' : mode === 'login' ? 'Continúa donde dejaste tu reforma.' : 'Pon orden desde el primer día.'}</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-terracotta">{mode === 'login' ? 'Bienvenido de nuevo' : mode === 'recover' ? 'Recuperar acceso' : 'Empieza tu proyecto'}</p>
+            <h2 className="mt-2 font-display text-3xl font-bold tracking-[-0.035em] text-stone-900">{mode === 'login' ? 'Accede a NIVEL' : mode === 'recover' ? 'Recupera tu cuenta' : 'Crea tu cuenta'}</h2>
+            <p className="mt-2 text-sm text-stone-500">{inviteToken ? 'Accede con el email que recibió la invitación.' : mode === 'login' ? 'Continúa donde dejaste tu reforma.' : mode === 'recover' ? 'Te enviaremos un enlace seguro por correo.' : 'Pon orden desde el primer día.'}</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl bg-white p-6 shadow-[0_18px_50px_rgba(37,42,35,0.08)] ring-1 ring-stone-200/70 sm:p-7">
@@ -74,27 +80,30 @@ export default function Login() {
               onChange={(e) => setEmail(e.target.value)}
               required
             />
-            <Input
+            {mode !== 'recover' && <Input
               label="Contraseña"
               type="password"
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-            />
+            />}
 
             {error && (
               <p className={`text-sm ${error.includes('Revisa') ? 'text-olive' : 'text-red-500'}`}>
                 {error}
               </p>
             )}
+            {notice && <p role="status" className="rounded-xl bg-olive-light p-3 text-sm text-olive">{notice}</p>}
 
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Entrando...' : mode === 'login' ? 'Entrar' : 'Crear cuenta'}
+              {loading ? 'Procesando…' : mode === 'login' ? 'Entrar' : mode === 'recover' ? 'Enviar enlace' : 'Crear cuenta'}
             </Button>
 
+            {mode === 'login' && <button type="button" onClick={() => { setMode('recover'); setError(null); setNotice('') }} className="w-full text-center text-sm font-medium text-stone-500 hover:text-stone-800">He olvidado mi contraseña</button>}
+
             <p className="text-center text-sm text-stone-500">
-              {mode === 'login' ? (
+              {mode === 'recover' ? <button type="button" onClick={() => { setMode('login'); setError(null); setNotice('') }} className="font-semibold text-stone-800 hover:underline">Volver a entrar</button> : mode === 'login' ? (
                 <>
                   ¿No tienes cuenta?{' '}
                   <button type="button" onClick={() => { setMode('register'); setError(null) }} className="font-semibold text-stone-800 hover:underline">Registrarse</button>

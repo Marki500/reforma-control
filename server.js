@@ -9,7 +9,7 @@ import * as cheerio from 'cheerio'
 import multer from 'multer'
 import { fetchRemote, normalizeRemoteUrl, RemoteFetchError } from './server/remoteFetch.js'
 import { budgetAnalysisPrompt, budgetAnalysisSchema, sanitizeBudgetAnalysis } from './server/budgetAnalysis.js'
-import { renderProjectInvitation, sendMailjetEmail } from './server/mailjet.js'
+import { renderProjectComment, renderProjectInvitation, sendMailjetEmail } from './server/mailjet.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const uploadsDir = path.join(__dirname, 'uploads')
@@ -47,6 +47,7 @@ const mailFromEmail = process.env.MAIL_FROM_EMAIL || 'notificaciones@noxumlab.co
 const mailFromName = process.env.MAIL_FROM_NAME || 'NIVEL'
 const appPublicUrl = (process.env.APP_PUBLIC_URL || '').replace(/\/$/, '')
 const invitationEmailTimes = new Map()
+const commentEmailTimes = new Map()
 
 async function requireSession(req, res, next) {
   const authorization = req.get('Authorization')
@@ -88,8 +89,8 @@ app.get('/api/health', (_req, res) => {
   const configured = aiProvider === 'openrouter' ? Boolean(openRouterApiKey) : aiProvider === 'gemini' && Boolean(geminiApiKey)
   res.status(200).json({
     status: 'ok',
-    release: 'project-invitation-email-v1',
-    features: { ai_budget_async: 4, project_invitation_email: 1 },
+    release: 'accounts-projects-collaboration-v1',
+    features: { ai_budget_async: 4, project_invitation_email: 1, project_comments: 1 },
     ai: { provider: aiProvider, model: aiProvider === 'openrouter' ? openRouterModel : aiModel, configured },
     mail: { provider: 'mailjet', configured: Boolean(mailjetApiKey && mailjetSecretKey && appPublicUrl) },
   })
@@ -148,6 +149,34 @@ app.post('/api/send-project-invitation', requireSession, async (req, res) => {
   } catch (error) {
     console.error('[project invitation email:error]', { requestId: req.requestId, userId: req.authUser.id, message: error?.message || 'Unknown error' })
     return res.status(502).json({ error: 'La invitación se creó, pero Mailjet no pudo enviar el correo.', code: 'MAIL_SEND_FAILED', request_id: req.requestId })
+  }
+})
+
+app.post('/api/send-comment-notifications', requireSession, async (req, res) => {
+  const commentId = String(req.body?.comment_id || '')
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(commentId)) return res.status(400).json({ error: 'El comentario no es válido.', code: 'INVALID_COMMENT', request_id: req.requestId })
+  if (!mailjetApiKey || !mailjetSecretKey || !appPublicUrl) return res.status(503).json({ error: 'El envío de correo no está configurado.', code: 'MAIL_NOT_CONFIGURED', request_id: req.requestId })
+  const lastSentAt = commentEmailTimes.get(req.authUser.id) || 0
+  if (Date.now() - lastSentAt < 2500) return res.status(429).json({ error: 'Espera unos segundos antes de enviar otro aviso.', code: 'MAIL_RATE_LIMIT', request_id: req.requestId })
+  try {
+    const headers = { Authorization: req.uploadAuthorization, apikey: supabaseKey, 'Content-Type': 'application/json' }
+    const [commentResponse, contextResponse, recipientsResponse] = await Promise.all([
+      fetch(`${supabaseUrl}/rest/v1/project_comments?select=body&id=eq.${commentId}&author_id=eq.${req.authUser.id}&limit=1`, { headers, signal: AbortSignal.timeout(15000) }),
+      fetch(`${supabaseUrl}/rest/v1/rpc/get_workspace_context`, { method: 'POST', headers, body: '{}', signal: AbortSignal.timeout(15000) }),
+      fetch(`${supabaseUrl}/rest/v1/rpc/get_comment_notification_recipients`, { method: 'POST', headers, body: JSON.stringify({ p_comment_id: commentId }), signal: AbortSignal.timeout(15000) }),
+    ])
+    const [comments, contexts, recipients] = await Promise.all([commentResponse.json(), contextResponse.json(), recipientsResponse.json()])
+    if (!commentResponse.ok || !contextResponse.ok || !recipientsResponse.ok || !comments?.[0] || !contexts?.[0]) throw new Error('No se pudo comprobar el comentario.')
+    commentEmailTimes.set(req.authUser.id, Date.now())
+    await Promise.all((recipients || []).map(recipient => sendMailjetEmail({
+      apiKey: mailjetApiKey, secretKey: mailjetSecretKey, fromEmail: mailFromEmail, fromName: mailFromName,
+      toEmail: recipient.email, requestId: req.requestId, customId: 'comment',
+      ...renderProjectComment({ projectName: contexts[0].project_name || 'Mi reforma', authorEmail: req.authUser.email || 'Una persona', comment: comments[0].body, appUrl: appPublicUrl, mentioned: recipient.mentioned }),
+    })))
+    return res.json({ sent: recipients?.length || 0, request_id: req.requestId })
+  } catch (error) {
+    console.error('[project comment email:error]', { requestId: req.requestId, userId: req.authUser.id, message: error?.message || 'Unknown error' })
+    return res.status(502).json({ error: 'El comentario se guardó, pero no se pudieron enviar los avisos.', code: 'MAIL_SEND_FAILED', request_id: req.requestId })
   }
 })
 

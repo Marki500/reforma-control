@@ -4,6 +4,7 @@ import Sidebar from './Sidebar'
 import Header from './Header'
 import MobileNav from './MobileNav'
 import OfflineStatus from './OfflineStatus'
+import ProjectOnboarding from '../projects/ProjectOnboarding'
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -40,6 +41,7 @@ export default function AppLayout() {
       </div>
       <MobileNav onMore={() => setSidebarOpen(true)} />
       <OfflineStatus />
+      <ProjectOnboarding />
     </div>
   )
 }

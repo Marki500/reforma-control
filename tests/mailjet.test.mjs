@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { renderProjectInvitation } from '../server/mailjet.js'
+import { renderProjectComment, renderProjectInvitation } from '../server/mailjet.js'
 
 test('project invitation email includes the project and safe invitation URL', () => {
   const message = renderProjectInvitation({
@@ -12,6 +12,17 @@ test('project invitation email includes the project and safe invitation URL', ()
   assert.match(message.text, /https:\/\/nivel\.example\/invite\/123/)
   assert.match(message.html, /Casa del Maresme/)
   assert.match(message.html, /Ver la invitación/)
+})
+
+test('project comment email distinguishes mentions and escapes the comment', () => {
+  const message = renderProjectComment({
+    projectName: 'Casa centro', authorEmail: 'marc@example.com',
+    comment: '<b>Revisar</b>\n@ana@example.com', appUrl: 'https://nivel.example', mentioned: true,
+  })
+  assert.match(message.subject, /mencionado/)
+  assert.match(message.html, /&lt;b&gt;Revisar&lt;\/b&gt;<br>/)
+  assert.doesNotMatch(message.html, /<b>Revisar<\/b>/)
+  assert.match(message.html, /https:\/\/nivel\.example\/settings/)
 })
 
 test('project invitation email escapes user-controlled content', () => {

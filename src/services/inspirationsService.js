@@ -2,15 +2,15 @@ import { authenticatedRequest, authenticatedUpload } from './uploadService'
 import { normalizeStorageRecord } from '../utils/storageUrl'
 import { supabase } from './supabaseClient'
 import { removeStoredFile } from './storageCleanup'
+import { getCurrentProjectId } from './workspaceService'
 
 export async function getInspirations() {
-  const { data: user } = await supabase.auth.getUser()
-  if (!user?.user) return []
+  const projectId = await getCurrentProjectId()
 
   const { data, error } = await supabase
     .from('inspirations')
     .select('*, rooms(name)')
-    .eq('user_id', user.user.id)
+    .eq('project_id', projectId)
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: false })
 
@@ -19,12 +19,11 @@ export async function getInspirations() {
 }
 
 export async function createInspiration(inspiration) {
-  const { data: user } = await supabase.auth.getUser()
-  if (!user?.user) throw new Error('Not authenticated')
+  const projectId = await getCurrentProjectId()
 
   const { data, error } = await supabase
     .from('inspirations')
-    .insert([{ ...inspiration, user_id: user.user.id }])
+    .insert([{ ...inspiration, project_id: projectId }])
     .select()
     .single()
 

@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient'
+import { getCurrentProjectId } from './workspaceService'
 
 export async function getNotes() {
   const { data, error } = await supabase
@@ -10,11 +11,9 @@ export async function getNotes() {
 }
 
 export async function createNote({ content, category, room_id }) {
-  const { data: userData } = await supabase.auth.getUser()
-  if (!userData?.user) throw new Error('Not authenticated')
   const { data, error } = await supabase
     .from('notes')
-    .insert({ user_id: userData.user.id, content, category: category || null, room_id: room_id || null })
+    .insert({ project_id: await getCurrentProjectId(), content, category: category || null, room_id: room_id || null })
     .select()
     .single()
   if (error) throw error

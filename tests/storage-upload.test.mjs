@@ -55,6 +55,11 @@ test('uploads require a valid user and forward that user to Storage', async () =
       res.end(JSON.stringify(valid ? { id: 'test-user' } : { error: 'Invalid token' }))
       return
     }
+    if (req.url === '/rest/v1/rpc/current_project_id') {
+      for await (const _chunk of req) {}
+      res.end(JSON.stringify('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'))
+      return
+    }
     if (req.url.includes(':generateContent')) {
       for await (const _chunk of req) {}
       res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ is_budget: true, document_title: 'Presupuesto de prueba', supplier_name: '', quote_number: '', issued_date: '', valid_until: '', suggested_category: '', subtotal: 100, tax_rate: 21, tax_amount: 21, total_amount: 121, payment_terms: '', warranty: '', notes: '', line_items: [], warnings: [] }) }] } }] }))
@@ -140,6 +145,11 @@ test('uploads require a valid user and forward that user to Storage', async () =
       assert.equal(response.status, 200, await response.clone().text())
       assert.ok((await response.json()).url.startsWith(`${mockUrl}/storage/v1/object/public/${bucket}/`))
     }
+    const documentBody = new FormData()
+    documentBody.append('file', new Blob(['test-only-content'], { type: 'application/pdf' }), 'document.pdf')
+    const documentResponse = await fetch(`${base}/api/upload-document`, { method: 'POST', headers: { Authorization: 'Bearer test-user-token' }, body: documentBody })
+    assert.equal(documentResponse.status, 200, await documentResponse.clone().text())
+    assert.match((await documentResponse.json()).url, /^aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\//)
     const analysisBody = new FormData()
     analysisBody.append('file', new Blob(['test-only-content'], { type: 'application/pdf' }), 'quote.pdf')
     const startedAnalysis = await fetch(`${base}/api/analyze-budget`, { method: 'POST', headers: { Authorization: 'Bearer test-user-token' }, body: analysisBody })
@@ -160,7 +170,7 @@ test('uploads require a valid user and forward that user to Storage', async () =
     assert.equal(openRouterRequests[0].headers.authorization, 'Bearer test-openrouter-key')
     assert.equal(openRouterRequests[0].body.plugins[0].pdf.engine, 'pdf-text')
     assert.match(openRouterRequests[0].body.messages[0].content[1].file.file_data, /^data:application\/pdf;base64,/)
-    assert.equal(uploads.length, 2)
+    assert.equal(uploads.length, 3)
     for (const upload of uploads) {
       assert.equal(upload.headers.authorization, 'Bearer test-user-token')
       assert.equal(upload.headers.apikey, 'test-anon-key')

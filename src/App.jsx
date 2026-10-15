@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
 const Login = lazy(() => import('./pages/Login'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
@@ -17,6 +17,7 @@ const ProgressPhotos = lazy(() => import('./pages/ProgressPhotos'))
 const HomeInfo = lazy(() => import('./pages/HomeInfo'))
 const AppLayout = lazy(() => import('./components/layout/AppLayout'))
 const NotFound = lazy(() => import('./pages/NotFound'))
+const Invite = lazy(() => import('./pages/Invite'))
 
 function PageLoader() {
   return <div className="flex min-h-[45dvh] items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-stone-700" /></div>
@@ -39,6 +40,7 @@ function ProtectedRoute({ children }) {
 
 function PublicRoute({ children }) {
   const { user, loading } = useAuth()
+  const location = useLocation()
 
   if (loading) {
     return (
@@ -48,7 +50,11 @@ function PublicRoute({ children }) {
     )
   }
 
-  if (user) return <Navigate to="/dashboard" replace />
+  if (user) {
+    const queryToken = new URLSearchParams(location.search).get('invite')
+    const inviteToken = queryToken || localStorage.getItem('nivel_pending_invite')
+    return <Navigate to={inviteToken ? `/invite/${inviteToken}` : '/dashboard'} replace />
+  }
   return children
 }
 
@@ -63,6 +69,7 @@ export default function App() {
           </PublicRoute>
         }
       />
+      <Route path="/invite/:token" element={<Invite />} />
       <Route
         path="/"
         element={

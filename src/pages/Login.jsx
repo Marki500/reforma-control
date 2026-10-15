@@ -1,15 +1,22 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../services/supabaseClient'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { BrandLockup, BrandMark } from '../components/brand/Brand'
 
 export default function Login() {
+  const [searchParams] = useSearchParams()
+  const inviteToken = searchParams.get('invite')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [mode, setMode] = useState('login')
+
+  useEffect(() => {
+    if (inviteToken) localStorage.setItem('nivel_pending_invite', inviteToken)
+  }, [inviteToken])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -21,7 +28,8 @@ export default function Login() {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
       } else {
-        const { error } = await supabase.auth.signUp({ email, password })
+        const emailRedirectTo = inviteToken ? `${window.location.origin}/invite/${encodeURIComponent(inviteToken)}` : undefined
+        const { error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo } })
         if (error) throw error
         setError('Cuenta creada. Revisa tu email para confirmar.')
         setMode('login')
@@ -54,7 +62,7 @@ export default function Login() {
             <BrandMark className="mb-6 hidden h-12 w-12 text-stone-900 lg:block" />
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-terracotta">{mode === 'login' ? 'Bienvenido de nuevo' : 'Empieza tu proyecto'}</p>
             <h2 className="mt-2 font-display text-3xl font-bold tracking-[-0.035em] text-stone-900">{mode === 'login' ? 'Accede a NIVEL' : 'Crea tu cuenta'}</h2>
-            <p className="mt-2 text-sm text-stone-500">{mode === 'login' ? 'Continúa donde dejaste tu reforma.' : 'Pon orden desde el primer día.'}</p>
+            <p className="mt-2 text-sm text-stone-500">{inviteToken ? 'Accede con el email que recibió la invitación.' : mode === 'login' ? 'Continúa donde dejaste tu reforma.' : 'Pon orden desde el primer día.'}</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl bg-white p-6 shadow-[0_18px_50px_rgba(37,42,35,0.08)] ring-1 ring-stone-200/70 sm:p-7">

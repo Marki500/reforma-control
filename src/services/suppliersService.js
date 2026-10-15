@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient'
+import { getCurrentProjectId } from './workspaceService'
 
 export async function getSuppliers() {
   const { data, error } = await supabase.from('suppliers').select('*').order('status').order('name')
@@ -16,10 +17,7 @@ export async function saveSupplier(id, form) {
   let query
   if (id) query = supabase.from('suppliers').update(payload).eq('id', id)
   else {
-    const { data, error } = await supabase.auth.getUser()
-    if (error) throw error
-    if (!data.user) throw new Error('Inicia sesión de nuevo.')
-    query = supabase.from('suppliers').insert({ ...payload, user_id: data.user.id })
+    query = supabase.from('suppliers').insert({ ...payload, project_id: await getCurrentProjectId() })
   }
   const { data, error } = await query.select().single()
   if (error) throw error

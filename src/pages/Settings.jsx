@@ -10,6 +10,7 @@ import { Modal } from '../components/ui/Modal'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import DataTools from '../components/settings/DataTools'
+import SharingSettings from '../components/settings/SharingSettings'
 
 const emptyItem = { name: '' }
 
@@ -200,6 +201,8 @@ export default function Settings() {
           </section>
         </>
       )}
+
+      <SharingSettings />
 
       <DataTools />
 

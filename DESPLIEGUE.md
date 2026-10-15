@@ -18,6 +18,14 @@ Después del despliegue, comprobar: abrir el PDF existente; subir un PDF y un pl
 
 Validación local: `node --test tests/storage-upload.test.mjs`, `npm run build`.
 
+## Activar el proyecto compartido
+
+Antes de desplegar la interfaz de invitaciones, abre Supabase Studio > SQL Editor y ejecuta una sola vez el archivo completo `supabase/migrations/00022_shared_workspace.sql`. La migración conserva los registros actuales, añade propietario y colaboradores, y reemplaza las políticas individuales por políticas de acceso al proyecto. También amplía el acceso seguro a documentos y archivos compartidos.
+
+Después sube el código y reconstruye la aplicación en Coolify. En `/api/health` debe aparecer `release: multi-project-sharing-v1`. Prueba el flujo con un segundo email: crea la invitación en Ajustes, abre el enlace en una ventana privada, registra o inicia sesión con ese mismo email y confirma que ambas cuentas ven la misma tarea. Finalmente elimina esa tarea de prueba y retira el acceso desde la cuenta propietaria.
+
+No ejecutes `npm run migrate` para esta función: ese script antiguo no incluye `00022_shared_workspace.sql`.
+
 ## Instalar NIVEL en el móvil
 
 NIVEL incluye manifest, service worker e iconos propios, por lo que puede instalarse como PWA después de desplegarla por HTTPS. No necesita una aplicación separada ni publicación en las tiendas.

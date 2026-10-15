@@ -2,6 +2,7 @@ import { supabase } from './supabaseClient'
 import { authenticatedUpload } from './uploadService'
 import { normalizeStorageRecord } from '../utils/storageUrl'
 import { storageObjectPath } from '../utils/progressPhotos'
+import { getCurrentProjectId } from './workspaceService'
 
 export async function getProgressPhotos() {
   const { data, error } = await supabase.from('progress_photos').select('*, rooms(name)').order('taken_date', { ascending: false }).order('created_at', { ascending: false })
@@ -23,10 +24,7 @@ export async function saveProgressPhoto(id, form, imageUrl) {
   let query
   if (id) query = supabase.from('progress_photos').update(payload).eq('id', id)
   else {
-    const { data, error } = await supabase.auth.getUser()
-    if (error) throw error
-    if (!data.user) throw new Error('Inicia sesión de nuevo.')
-    query = supabase.from('progress_photos').insert({ ...payload, image_url: imageUrl, user_id: data.user.id })
+    query = supabase.from('progress_photos').insert({ ...payload, image_url: imageUrl, project_id: await getCurrentProjectId() })
   }
   const { data, error } = await query.select('*, rooms(name)').single()
   if (error) throw error

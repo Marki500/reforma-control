@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient'
 import { removeStoredFile } from './storageCleanup'
+import { getCurrentProjectId } from './workspaceService'
 
 export async function createMaterial(material) {
   const { data, error } = await supabase
@@ -62,10 +63,10 @@ export async function getCategories() {
 }
 
 export async function createCategory(name) {
-  const { data: user } = await supabase.auth.getUser()
+  const projectId = await getCurrentProjectId()
   const { data, error } = await supabase
     .from('material_categories')
-    .insert([{ name, user_id: user?.user?.id }])
+    .insert([{ name, project_id: projectId }])
     .select()
     .single()
 
@@ -105,10 +106,10 @@ export async function getRooms() {
 }
 
 export async function createRoom(name) {
-  const { data: user } = await supabase.auth.getUser()
+  const projectId = await getCurrentProjectId()
   const { data, error } = await supabase
     .from('rooms')
-    .insert([{ name, user_id: user?.user?.id }])
+    .insert([{ name, project_id: projectId }])
     .select()
     .single()
 
@@ -138,13 +139,12 @@ export async function deleteRoom(id) {
 }
 
 export async function getCategoryBudgets() {
-  const { data: user } = await supabase.auth.getUser()
-  if (!user?.user) return []
+  const projectId = await getCurrentProjectId()
 
   const { data, error } = await supabase
     .from('category_budgets')
     .select('*')
-    .eq('user_id', user.user.id)
+    .eq('project_id', projectId)
 
   if (error) throw error
   return data || []
@@ -163,13 +163,12 @@ export async function toggleCountInTotal(id, value) {
 }
 
 export async function getDashboardGridConfig() {
-  const { data: user } = await supabase.auth.getUser()
-  if (!user?.user) return null
+  const projectId = await getCurrentProjectId()
 
   const { data, error } = await supabase
     .from('dashboard_grid_config')
     .select('*')
-    .eq('user_id', user.user.id)
+    .eq('project_id', projectId)
     .maybeSingle()
 
   if (error) throw error
@@ -177,14 +176,13 @@ export async function getDashboardGridConfig() {
 }
 
 export async function upsertDashboardGridConfig(numColumns, numRows) {
-  const { data: user } = await supabase.auth.getUser()
-  if (!user?.user) throw new Error('Not authenticated')
+  const projectId = await getCurrentProjectId()
 
   const { data, error } = await supabase
     .from('dashboard_grid_config')
     .upsert(
-      { user_id: user.user.id, num_columns: numColumns, num_rows: numRows },
-      { onConflict: 'user_id' }
+      { project_id: projectId, num_columns: numColumns, num_rows: numRows },
+      { onConflict: 'project_id' }
     )
     .select()
     .single()
@@ -194,13 +192,12 @@ export async function upsertDashboardGridConfig(numColumns, numRows) {
 }
 
 export async function getDashboardGridCells() {
-  const { data: user } = await supabase.auth.getUser()
-  if (!user?.user) return []
+  const projectId = await getCurrentProjectId()
 
   const { data, error } = await supabase
     .from('dashboard_grid_cells')
     .select('*, material_categories(name)')
-    .eq('user_id', user.user.id)
+    .eq('project_id', projectId)
     .order('row_index')
     .order('col_index')
 
@@ -209,12 +206,9 @@ export async function getDashboardGridCells() {
 }
 
 export async function saveDashboardGridCells(cells) {
-  const { data: user } = await supabase.auth.getUser()
-  if (!user?.user) throw new Error('Not authenticated')
-
-  const userId = user.user.id
+  const projectId = await getCurrentProjectId()
   const payload = cells.map((c) => ({
-    user_id: userId,
+    project_id: projectId,
     category_id: c.category_id || null,
     budget_amount: c.budget_amount || 0,
     row_index: c.row_index,
@@ -223,7 +217,7 @@ export async function saveDashboardGridCells(cells) {
 
   const { data, error } = await supabase
     .from('dashboard_grid_cells')
-    .upsert(payload, { onConflict: 'user_id,row_index,col_index' })
+    .upsert(payload, { onConflict: 'project_id,row_index,col_index' })
     .select()
 
   if (error) throw error
@@ -231,26 +225,24 @@ export async function saveDashboardGridCells(cells) {
 }
 
 export async function deleteDashboardGridCells() {
-  const { data: user } = await supabase.auth.getUser()
-  if (!user?.user) throw new Error('Not authenticated')
+  const projectId = await getCurrentProjectId()
 
   const { error } = await supabase
     .from('dashboard_grid_cells')
     .delete()
-    .eq('user_id', user.user.id)
+    .eq('project_id', projectId)
 
   if (error) throw error
 }
 
 export async function upsertCategoryBudget(categoryId, budgetAmount) {
-  const { data: user } = await supabase.auth.getUser()
-  if (!user?.user) throw new Error('Not authenticated')
+  const projectId = await getCurrentProjectId()
 
   const { data, error } = await supabase
     .from('category_budgets')
     .upsert(
-      { user_id: user.user.id, category_id: categoryId, budget_amount: budgetAmount },
-      { onConflict: 'user_id,category_id' }
+      { project_id: projectId, category_id: categoryId, budget_amount: budgetAmount },
+      { onConflict: 'project_id,category_id' }
     )
     .select()
     .single()

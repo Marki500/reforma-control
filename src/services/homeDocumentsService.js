@@ -2,6 +2,7 @@ import { supabase } from './supabaseClient'
 import { authenticatedUpload } from './uploadService'
 import { normalizeStorageRecord } from '../utils/storageUrl'
 import { removeStoredFile } from './storageCleanup'
+import { getCurrentProjectId } from './workspaceService'
 
 export async function getHomeDocuments() {
   const { data, error } = await supabase.from('home_documents').select('*').order('expiry_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false })
@@ -19,11 +20,9 @@ export async function uploadHomeDocument(file) {
 }
 
 export async function createHomeDocument(form, upload) {
-  const { data: authData, error: authError } = await supabase.auth.getUser()
-  if (authError) throw authError
-  if (!authData.user) throw new Error('Inicia sesión de nuevo.')
+  const projectId = await getCurrentProjectId()
   const { data, error } = await supabase.from('home_documents').insert({
-    user_id: authData.user.id, title: form.title.trim(), document_type: form.document_type,
+    project_id: projectId, title: form.title.trim(), document_type: form.document_type,
     file_url: upload.url, file_size: upload.size || 0, document_date: form.document_date || null,
     expiry_date: form.expiry_date || null, notes: form.notes.trim(),
   }).select().single()

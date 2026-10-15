@@ -61,12 +61,27 @@ async function requireSession(req, res, next) {
   }
 }
 
+async function getRequestProjectId(req) {
+  if (req.projectId) return req.projectId
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/current_project_id`, {
+    method: 'POST',
+    headers: { Authorization: req.uploadAuthorization, apikey: supabaseKey, 'Content-Type': 'application/json' },
+    body: '{}',
+    signal: AbortSignal.timeout(15000),
+  })
+  if (!response.ok) throw new Error('No se pudo identificar el proyecto compartido.')
+  const projectId = await response.json()
+  if (!/^[0-9a-f-]{36}$/i.test(projectId || '')) throw new Error('El proyecto compartido no es válido.')
+  req.projectId = projectId
+  return projectId
+}
+
 // Health check for Coolify / load balancers
 app.get('/api/health', (_req, res) => {
   const configured = aiProvider === 'openrouter' ? Boolean(openRouterApiKey) : aiProvider === 'gemini' && Boolean(geminiApiKey)
   res.status(200).json({
     status: 'ok',
-    release: 'ai-budget-providers-v4',
+    release: 'multi-project-sharing-v1',
     features: { ai_budget_async: 4 },
     ai: { provider: aiProvider, model: aiProvider === 'openrouter' ? openRouterModel : aiModel, configured },
   })
@@ -718,7 +733,8 @@ app.post('/api/upload-document', requireSession, documentUpload.single('file'), 
   if (!req.file) return res.status(400).json({ error: 'Documento requerido o formato no válido' })
   try {
     const extensions = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' }
-    const fileName = `${req.authUser.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}${extensions[req.file.mimetype]}`
+    const projectId = await getRequestProjectId(req)
+    const fileName = `${projectId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}${extensions[req.file.mimetype]}`
     const uploadRes = await fetch(`${supabaseUrl}/storage/v1/object/home-documents/${fileName}`, {
       method: 'POST',
       headers: { 'Authorization': req.uploadAuthorization, 'apikey': supabaseKey, 'Content-Type': req.file.mimetype, 'x-upsert': 'false' },

@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient'
+import { getCurrentProjectId } from './workspaceService'
 
 function payloadFrom(form) {
   return {
@@ -22,10 +23,7 @@ export async function saveExpense(id, form) {
   let query
   if (id) query = supabase.from('expenses').update(payload).eq('id', id)
   else {
-    const { data, error } = await supabase.auth.getUser()
-    if (error) throw error
-    if (!data.user) throw new Error('Inicia sesión de nuevo.')
-    query = supabase.from('expenses').insert({ ...payload, user_id: data.user.id })
+    query = supabase.from('expenses').insert({ ...payload, project_id: await getCurrentProjectId() })
   }
   const { data, error } = await query.select('*, rooms(name), suppliers(name)').single()
   if (error) throw error

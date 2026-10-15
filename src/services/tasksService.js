@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient'
+import { getCurrentProjectId } from './workspaceService'
 
 export async function getTasks() {
   const { data, error } = await supabase.from('tasks').select('*, rooms(name), task_items(id, title, is_completed, position)').order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }).order('position', { referencedTable: 'task_items', ascending: true })
@@ -49,10 +50,7 @@ export async function saveTask(id, form) {
   if (id) {
     query = supabase.from('tasks').update(payload).eq('id', id)
   } else {
-    const { data, error } = await supabase.auth.getUser()
-    if (error) throw error
-    if (!data.user) throw new Error('Inicia sesión de nuevo.')
-    query = supabase.from('tasks').insert({ ...payload, user_id: data.user.id })
+    query = supabase.from('tasks').insert({ ...payload, project_id: await getCurrentProjectId() })
   }
   const { data, error } = await query.select('id').single()
   if (error) throw error

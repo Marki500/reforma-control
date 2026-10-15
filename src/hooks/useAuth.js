@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../services/supabaseClient'
+import { clearWorkspaceCache } from '../services/workspaceService'
 
 export function useAuth() {
   const [user, setUser] = useState(null)
@@ -7,6 +8,7 @@ export function useAuth() {
 
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      clearWorkspaceCache()
       setUser(session?.user ?? null)
       setLoading(false)
     })

@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient'
+import { getCurrentProjectId } from './workspaceService'
 
 export async function getHomeInfo() {
   const { data, error } = await supabase.from('home_info').select('*').maybeSingle()
@@ -7,15 +8,13 @@ export async function getHomeInfo() {
 }
 
 export async function saveHomeInfo(form) {
-  const { data: authData, error: authError } = await supabase.auth.getUser()
-  if (authError) throw authError
-  if (!authData.user) throw new Error('Inicia sesión de nuevo.')
+  const projectId = await getCurrentProjectId()
 
   const optionalNumber = value => value === '' || value == null ? null : Number(value)
   const optionalDate = value => value || null
   const text = value => String(value || '').trim()
   const payload = {
-    user_id: authData.user.id,
+    project_id: projectId,
     address: text(form.address), postal_code: text(form.postal_code), city: text(form.city), province: text(form.province),
     property_type: text(form.property_type), cadastral_reference: text(form.cadastral_reference),
     construction_year: optionalNumber(form.construction_year), built_area: optionalNumber(form.built_area), usable_area: optionalNumber(form.usable_area),
@@ -27,7 +26,7 @@ export async function saveHomeInfo(form) {
     updated_at: new Date().toISOString(),
   }
 
-  const { data, error } = await supabase.from('home_info').upsert(payload, { onConflict: 'user_id' }).select().single()
+  const { data, error } = await supabase.from('home_info').upsert(payload, { onConflict: 'project_id' }).select().single()
   if (error) throw error
   return data
 }

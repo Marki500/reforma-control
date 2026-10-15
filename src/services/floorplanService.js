@@ -2,6 +2,7 @@ import { authenticatedUpload } from './uploadService'
 import { normalizeStorageRecord } from '../utils/storageUrl'
 import { supabase } from './supabaseClient'
 import { removeStoredFile } from './storageCleanup'
+import { getCurrentProjectId } from './workspaceService'
 
 export async function getFloorPlans() {
   const { data, error } = await supabase
@@ -23,12 +24,10 @@ export async function getFloorPlan(id) {
 }
 
 export async function createFloorPlan({ name, image_url }) {
-  const { data: userData } = await supabase.auth.getUser()
-  if (!userData?.user) throw new Error('Not authenticated')
   const { data, error } = await supabase
     .from('floor_plans')
     .insert({
-      user_id: userData.user.id,
+      project_id: await getCurrentProjectId(),
       name,
       image_url,
     })

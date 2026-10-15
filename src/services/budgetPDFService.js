@@ -2,15 +2,15 @@ import { authenticatedGet, authenticatedRequest, authenticatedUpload } from './u
 import { normalizeStorageRecord } from '../utils/storageUrl'
 import { supabase } from './supabaseClient'
 import { removeStoredFile } from './storageCleanup'
+import { getCurrentProjectId } from './workspaceService'
 
 export async function getBudgetPDFs() {
-  const { data: user } = await supabase.auth.getUser()
-  if (!user?.user) return []
+  const projectId = await getCurrentProjectId()
 
   const { data, error } = await supabase
     .from('budget_pdfs')
     .select('*, material_categories(name), suppliers(id, name, trade)')
-    .eq('user_id', user.user.id)
+    .eq('project_id', projectId)
     .order('created_at', { ascending: false })
 
   if (error) throw error
@@ -18,13 +18,12 @@ export async function getBudgetPDFs() {
 }
 
 export async function getBudgetPDFsByCategory(categoryId) {
-  const { data: user } = await supabase.auth.getUser()
-  if (!user?.user) return []
+  const projectId = await getCurrentProjectId()
 
   const { data, error } = await supabase
     .from('budget_pdfs')
     .select('*, material_categories(name), suppliers(id, name, trade)')
-    .eq('user_id', user.user.id)
+    .eq('project_id', projectId)
     .eq('category_id', categoryId)
     .order('created_at', { ascending: false })
 
@@ -33,12 +32,11 @@ export async function getBudgetPDFsByCategory(categoryId) {
 }
 
 export async function createBudgetPDF(pdf) {
-  const { data: user } = await supabase.auth.getUser()
-  if (!user?.user) throw new Error('Not authenticated')
+  const projectId = await getCurrentProjectId()
 
   const { data, error } = await supabase
     .from('budget_pdfs')
-    .insert([{ ...pdf, user_id: user.user.id }])
+    .insert([{ ...pdf, project_id: projectId }])
     .select()
     .single()
 

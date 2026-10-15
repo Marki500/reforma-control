@@ -2,6 +2,7 @@ import { normalizeStorageRecord } from '../utils/storageUrl'
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../services/supabaseClient'
+import { getCurrentProjectId } from '../services/workspaceService'
 import {
   createMaterial,
   updateMaterial,
@@ -122,13 +123,12 @@ export default function Materials() {
     setSaving(true)
     let uploadedImageUrl = null
     try {
-      const { data: userData } = await supabase.auth.getUser()
-      if (!userData?.user) return
+      const projectId = await getCurrentProjectId()
 
       let mainImageUrl = formData.main_image_url
 
       if (imageFile) {
-        mainImageUrl = await uploadImage(imageFile, userData.user.id)
+        mainImageUrl = await uploadImage(imageFile, projectId)
         uploadedImageUrl = mainImageUrl
       }
 
@@ -136,7 +136,7 @@ export default function Materials() {
         ...formData,
         category_id: formData.category_id || null,
         room_id: formData.room_id || null,
-        user_id: userData.user.id,
+        project_id: projectId,
         main_image_url: mainImageUrl,
       }
 

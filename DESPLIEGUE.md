@@ -44,7 +44,7 @@ La corrección final del botón de edición elimina completamente el envío HTML
 
 Después de `00025`, ejecuta una vez `supabase/migrations/00026_ai_usage_limits.sql` y después despliega la aplicación. La migración crea contadores diarios persistentes y atómicos: 5 usos por usuario y 40 para toda la aplicación, reiniciados según la fecha de Europe/Madrid. Si Supabase no permite comprobar o reservar un uso, NIVEL no llama a OpenRouter.
 
-Mantén `OPENROUTER_MODEL=openrouter/free`, `OPENROUTER_PDF_ENGINE=pdf-text` y `AI_FREE_ONLY=true`. Con el modo gratuito activado, el servidor rechaza cualquier configuración distinta que pueda generar costes. Tras el deploy, `/api/health` debe mostrar `release: ai-usage-limits-v1`, `ai_usage_limits: 1` y `free_only: true`.
+Mantén `OPENROUTER_MODEL=openrouter/free`, `OPENROUTER_PDF_ENGINE=pdf-text` y `AI_FREE_ONLY=true`. Con el modo gratuito activado, el servidor rechaza cualquier configuración distinta que pueda generar costes. Tras el deploy, `/api/health` debe mostrar `release: ai-budget-poll-resilience-v1`, `ai_budget_async: 5`, `ai_usage_limits: 1` y `free_only: true`. La app tolera hasta un minuto de interrupciones temporales del proxy mientras consulta un análisis ya iniciado, sin volver a enviar el PDF ni consumir otro uso de IA.
 
 Si el contador devuelve `AI_USAGE_UNAVAILABLE` después de haber aplicado `00026`, ejecuta `supabase/migrations/00027_fix_ai_usage_counter.sql`. Corrige una ambigüedad de PostgreSQL en `usage_date`, conserva los contadores existentes y recarga el esquema de PostgREST.
 

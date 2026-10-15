@@ -78,6 +78,44 @@ export async function uploadPDF(file) {
   return authenticatedUpload('/api/upload-pdf', formData)
 }
 
+const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
+
+function analysisError(message, { transient = false } = {}) {
+  const error = new Error(message)
+  error.transient = transient
+  return error
+}
+
+async function pollBudgetAnalysis(job) {
+  let response
+  try {
+    response = await fetch(`/api/analyze-budget/${encodeURIComponent(job.job_id)}`, {
+      cache: 'no-store',
+      headers: {
+        'x-request-id': job.request_id,
+        'x-analysis-token': job.poll_token,
+      },
+      signal: AbortSignal.timeout(10000),
+    })
+  } catch {
+    throw analysisError(`No se pudo conectar temporalmente con el servidor. Diagnóstico: ${job.request_id}`, { transient: true })
+  }
+
+  const result = await response.json().catch(() => null)
+  const diagnosticId = result?.request_id || response.headers.get('x-request-id') || job.request_id
+  if (!response.ok) {
+    // An error with a code comes from our API and must be shown immediately. An
+    // unstructured 502/503/504 normally comes from the reverse proxy and is safe to retry.
+    if (!result?.code && [502, 503, 504].includes(response.status)) {
+      throw analysisError(`El servidor o el proxy no respondió temporalmente. Diagnóstico: ${diagnosticId}`, { transient: true })
+    }
+    const reason = result?.code ? ` · ${result.code}` : ''
+    throw analysisError(`${result?.error || `La operación no se pudo completar (HTTP ${response.status}).`}${reason} · Diagnóstico: ${diagnosticId}`)
+  }
+  if (!result) throw analysisError(`El servidor devolvió una respuesta no válida. Diagnóstico: ${diagnosticId}`, { transient: true })
+  return result
+}
+
 export async function analyzeBudgetPDF(file) {
   let health
   try {
@@ -86,7 +124,7 @@ export async function analyzeBudgetPDF(file) {
   } catch {
     throw new Error('Fase: comprobación del servidor · No se pudo consultar la versión desplegada.')
   }
-  if (health?.features?.ai_budget_async !== 4) {
+  if (health?.features?.ai_budget_async !== 5) {
     throw new Error(`Fase: comprobación del servidor · Coolify está sirviendo una versión anterior (${health?.release || 'sin versión'}). Haz un redeploy sin caché.`)
   }
   const formData = new FormData()
@@ -98,19 +136,29 @@ export async function analyzeBudgetPDF(file) {
     throw new Error(`Fase: envío del PDF · ${error.message}`)
   }
   if (!job.job_id || !job.poll_token) throw new Error(`El servidor no inició el análisis. Diagnóstico: ${job.request_id || 'sin identificador'}`)
-  let transientFailures = 0
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    await new Promise(resolve => setTimeout(resolve, 1500))
+  const analysisDeadline = Date.now() + 5 * 60 * 1000
+  let transientFailureStartedAt = null
+  while (Date.now() < analysisDeadline) {
+    await wait(2000)
     try {
-      const result = await authenticatedGet(`/api/analyze-budget/${encodeURIComponent(job.job_id)}`, { 'x-request-id': job.request_id, 'x-analysis-token': job.poll_token })
+      const result = await pollBudgetAnalysis(job)
       if (result.status === 'complete') return result
-      transientFailures = 0
+      transientFailureStartedAt = null
     } catch (error) {
-      if (/proxy tardó|No se pudo conectar con el servidor/i.test(error.message) && transientFailures < 4) {
-        transientFailures += 1
+      if (error.transient) {
+        transientFailureStartedAt ||= Date.now()
+        if (Date.now() - transientFailureStartedAt < 60 * 1000) continue
+      }
+      if (error.transient) {
+        throw new Error(`Fase: consulta del resultado · El servidor lleva más de un minuto sin responder. El análisis puede seguir ejecutándose. ${error.message}`)
+      }
+      if (error.message) {
+        throw new Error(`Fase: procesamiento del PDF · ${error.message}`)
+      }
+      if (Date.now() < analysisDeadline) {
         continue
       }
-      throw new Error(`Fase: procesamiento del PDF · ${error.message}`)
+      throw error
     }
   }
   throw new Error(`El análisis sigue tardando más de lo esperado. Diagnóstico: ${job.request_id}`)

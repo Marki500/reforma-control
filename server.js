@@ -102,8 +102,8 @@ app.get('/api/health', (_req, res) => {
   const configured = aiProvider === 'openrouter' ? Boolean(openRouterApiKey) : aiProvider === 'gemini' && Boolean(geminiApiKey)
   res.status(200).json({
     status: 'ok',
-    release: 'ai-usage-limits-v1',
-    features: { ai_budget_async: 4, ai_usage_limits: 1, project_invitation_email: 1, project_comments: 1 },
+    release: 'ai-budget-poll-resilience-v1',
+    features: { ai_budget_async: 5, ai_usage_limits: 1, project_invitation_email: 1, project_comments: 1 },
     ai: { provider: aiProvider, model: aiProvider === 'openrouter' ? openRouterModel : aiModel, configured, free_only: aiFreeOnly },
     mail: { provider: 'mailjet', configured: Boolean(mailjetApiKey && mailjetSecretKey && appPublicUrl) },
   })
@@ -799,11 +799,12 @@ app.post('/api/analyze-budget', requireSession, pdfUpload.single('file'), async 
 })
 
 app.get('/api/analyze-budget/:jobId', (req, res) => {
+  res.set('Cache-Control', 'no-store')
   const job = aiAnalysisJobs.get(req.params.jobId)
   if (!job || job.pollToken !== req.get('x-analysis-token')) {
     return res.status(404).json({ error: 'El análisis ya no está disponible. Vuelve a enviar el PDF.', code: 'AI_JOB_NOT_FOUND', request_id: req.requestId })
   }
-  if (job.status === 'processing') return res.status(202).json({ status: 'processing', request_id: job.requestId })
+  if (job.status === 'processing') return res.status(202).json({ status: 'processing', elapsed_ms: Date.now() - job.createdAt, request_id: job.requestId })
   if (job.status === 'error') return res.status(job.failure.status).json({ error: job.failure.message, code: job.failure.code, request_id: job.requestId })
   return res.json({ status: 'complete', draft: job.draft, provider: job.provider, model: job.model, usage: job.usage, request_id: job.requestId })
 })

@@ -89,7 +89,7 @@ app.get('/api/health', (_req, res) => {
   const configured = aiProvider === 'openrouter' ? Boolean(openRouterApiKey) : aiProvider === 'gemini' && Boolean(geminiApiKey)
   res.status(200).json({
     status: 'ok',
-    release: 'accounts-projects-collaboration-v1',
+    release: 'home-info-explicit-save-v1',
     features: { ai_budget_async: 4, project_invitation_email: 1, project_comments: 1 },
     ai: { provider: aiProvider, model: aiProvider === 'openrouter' ? openRouterModel : aiModel, configured },
     mail: { provider: 'mailjet', configured: Boolean(mailjetApiKey && mailjetSecretKey && appPublicUrl) },

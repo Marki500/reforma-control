@@ -18,6 +18,21 @@ export function normalizeRemoteUrl(value) {
   return url
 }
 
+const trackingParameterNames = new Set([
+  'awc', 'aw_affid', 'dclid', 'fbclid', 'gad_source', 'gclid',
+  'sv1', 'sv_campaign_id', 'utm_id',
+])
+
+export function canonicalizeRemoteUrl(value) {
+  const url = parseRemoteUrl(value)
+  for (const name of [...url.searchParams.keys()]) {
+    if (name.toLowerCase().startsWith('utm_') || trackingParameterNames.has(name.toLowerCase())) {
+      url.searchParams.delete(name)
+    }
+  }
+  return url.href
+}
+
 function ipv4Number(address) {
   return address.split('.').reduce((value, part) => (value * 256) + Number(part), 0) >>> 0
 }

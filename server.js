@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto'
 import * as cheerio from 'cheerio'
 import multer from 'multer'
 import { PDFParse } from 'pdf-parse'
-import { fetchRemote, normalizeRemoteUrl, RemoteFetchError } from './server/remoteFetch.js'
+import { canonicalizeRemoteUrl, fetchRemote, normalizeRemoteUrl, RemoteFetchError } from './server/remoteFetch.js'
 import { budgetAnalysisPrompt, budgetAnalysisSchema, sanitizeBudgetAnalysis } from './server/budgetAnalysis.js'
 import { renderProjectComment, renderProjectInvitation, sendMailjetEmail } from './server/mailjet.js'
 
@@ -223,14 +223,14 @@ app.post('/api/send-comment-notifications', requireSession, async (req, res) => 
 })
 
 app.post('/api/import-product', requireSession, async (req, res) => {
-  const url = normalizeRemoteUrl(req.body?.url)
+  let url = normalizeRemoteUrl(req.body?.url)
 
   if (!url) {
     return res.status(400).json({ error: 'URL requerida' })
   }
 
   try {
-    new URL(url)
+    url = canonicalizeRemoteUrl(url)
   } catch {
     return res.status(400).json({ error: 'URL inválida' })
   }
@@ -241,9 +241,11 @@ app.post('/api/import-product', requireSession, async (req, res) => {
       timeoutMs: 15000,
       allowedContentTypes: ['text/html', 'application/xhtml+xml'],
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        'Accept': 'text/html,application/xhtml+xml',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+        'Cache-Control': 'no-cache',
+        'Upgrade-Insecure-Requests': '1',
       },
     })
 

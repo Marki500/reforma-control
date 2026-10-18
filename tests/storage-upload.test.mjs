@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { normalizeStorageUrl } from '../src/utils/storageUrl.js'
 import { normalizeProductUrl } from '../src/utils/productUrl.js'
-import { createPinnedLookup, isPublicIp, normalizeRemoteUrl, parseRemoteUrl, RemoteFetchError } from '../server/remoteFetch.js'
+import { canonicalizeRemoteUrl, createPinnedLookup, isPublicIp, normalizeRemoteUrl, parseRemoteUrl, RemoteFetchError } from '../server/remoteFetch.js'
 
 test('legacy links keep object paths; external links are not rewritten', () => {
   const old = 'https://api-reforma.bycram.dev/storage/v1/object/public/budget-pdfs/a.pdf?download=1#page=2'
@@ -31,6 +31,9 @@ test('product URLs are normalized before validation', () => {
   assert.equal(normalizeProductUrl('  https\\://www\\.example.com/item  '), 'https://www.example.com/item')
   assert.equal(normalizeProductUrl('www.example.com/item'), 'https://www.example.com/item')
   assert.equal(normalizeRemoteUrl('  https\\://www\\.example.com/item  '), 'https://www.example.com/item')
+  const tracked = 'https://www.leroymerlin.es/producto.html?aw_affid=123&utm_source=awin&sv1=affiliate&color=beige#details'
+  assert.equal(normalizeProductUrl(tracked), 'https://www.leroymerlin.es/producto.html?color=beige#details')
+  assert.equal(canonicalizeRemoteUrl(tracked), 'https://www.leroymerlin.es/producto.html?color=beige#details')
 })
 
 test('pinned DNS lookup supports Node single and multi-address modes', async () => {

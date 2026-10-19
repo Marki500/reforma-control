@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient'
-import { storagePathForBucket } from './storageCleanup'
+import { deleteProjectSafely, retryProjectFileCleanup } from '../utils/projectDeletion'
 
 let contextPromise
 
@@ -86,32 +86,13 @@ export async function restoreProject(projectId) {
   clearWorkspaceCache()
 }
 
-async function removeProjectFiles() {
-  const sources = [
-    ['materials', 'main_image_url', 'material-images'],
-    ['inspirations', 'image_url', 'images'],
-    ['floor_plans', 'image_url', 'images'],
-    ['budget_pdfs', 'file_url', 'budget-pdfs'],
-    ['progress_photos', 'image_url', 'images'],
-    ['home_documents', 'file_url', 'home-documents'],
-  ]
-  for (const [table, column, bucket] of sources) {
-    const { data, error } = await supabase.from(table).select(column)
-    if (error) throw error
-    const paths = [...new Set((data || []).map(row => storagePathForBucket(row[column], bucket)).filter(Boolean))]
-    if (paths.length) {
-      const { error: storageError } = await supabase.storage.from(bucket).remove(paths)
-      if (storageError) throw storageError
-    }
-  }
+export async function deleteProject(projectId) {
+  const result = await deleteProjectSafely(supabase, projectId)
+  clearWorkspaceCache()
+  return result
 }
 
-export async function deleteProject(projectId) {
-  await removeProjectFiles()
-  const { error } = await supabase.rpc('delete_project', { p_project_id: projectId })
-  if (error) throw error
-  clearWorkspaceCache()
-}
+export function retryDeletedProjectFiles() { return retryProjectFileCleanup(supabase) }
 
 export async function getProjectActivity(limit = 30) {
   const { data, error } = await supabase.rpc('list_project_activity', { p_limit: limit })

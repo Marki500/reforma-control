@@ -1,0 +1,42 @@
+const today = new Date()
+const dateKey = offset => { const date = new Date(today); date.setDate(date.getDate() + offset); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
+const project = { project_id: 'demo', workspace_owner_id: 'demo-user', project_name: 'Reforma de ejemplo', name: 'Reforma de ejemplo', role: 'owner', setup_completed: true, is_active: true }
+const materials = [
+  { id: 'm1', name: 'Grifo de lavabo monomando caño alto en acabado latón cepillado', price: 249, quantity: 2, category_id: 'bath', status: 'Mirando', priority: 'Media', store_name: 'tienda.example', product_url: 'https://tienda.example/grifo', material_categories: { name: 'Baño' }, rooms: { name: 'Baño principal' } },
+  { id: 'm2', name: 'Ventana de PVC con apertura oscilobatiente y doble acristalamiento 150 × 120 cm', price: 391.47, quantity: 4, category_id: 'windows', status: 'Comprado', priority: 'Alta', store_name: 'Ventanas Ejemplo', product_url: 'https://ventanas.example/producto', material_categories: { name: 'Ventanas' } },
+  { id: 'm3', name: 'Mueble de baño suspendido de roble con dos cajones y encimera', price: 736, quantity: 1, category_id: 'bath', status: 'Favorito', priority: 'Media', material_categories: { name: 'Baño' } },
+]
+const tables = {
+  materials,
+  material_categories: [{ id: 'bath', name: 'Baño' }, { id: 'windows', name: 'Ventanas' }],
+  rooms: [{ id: 'room1', name: 'Baño principal' }],
+  expenses: [{ id: 'e1', title: 'Segundo pago de carpintería', amount: 2400, paid_amount: 600, due_date: dateKey(3) }],
+  tasks: [{ id: 't1', title: 'Confirmar medidas de las ventanas', description: '', status: 'Pendiente', due_date: dateKey(0) }],
+  notes: [{ id: 'n1', category: 'Resumen', content: '<p>Confirmar acabados de grifería y fecha de entrega de las ventanas.</p>', created_at: today.toISOString() }],
+  category_budgets: [{ category_id: 'bath', budget_amount: 1800 }, { category_id: 'windows', budget_amount: 2000 }],
+  dashboard_grid_config: [{ num_columns: 2, num_rows: 1 }],
+  dashboard_grid_cells: [{ row_index: 0, col_index: 0, category_id: 'bath', budget_amount: 1800, material_categories: { name: 'Baño' } }, { row_index: 0, col_index: 1, category_id: 'windows', budget_amount: 2000, material_categories: { name: 'Ventanas' } }],
+}
+const attempts = {}
+export const supabase = {
+  auth: {
+    getUser: async () => ({ data: { user: { id: 'demo-user' } } }),
+    getSession: async () => ({ data: { session: { user: { id: 'demo-user', email: 'demo@example.com' } } } }),
+    onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+  },
+  rpc: async name => ({ data: name === 'get_workspace_context' || name === 'get_project_details' ? [project] : name === 'list_user_projects_v2' ? [project] : [] }),
+  from(table) {
+    let single = false
+    const chain = {
+      select() { return chain }, order() { return chain }, eq() { return chain }, limit() { return chain },
+      maybeSingle() { single = true; return chain }, single() { single = true; return chain },
+      then(resolve, reject) {
+        attempts[table] = (attempts[table] || 0) + 1
+        const params = new URLSearchParams(location.search)
+        const error = (params.has('error') && ['materials', 'expenses'].includes(table)) || (params.has('errorOnce') && table === 'materials' && attempts[table] === 1)
+        return Promise.resolve(error ? { error: new Error('No se pudo conectar. Vuelve a intentarlo.') } : { data: single ? (tables[table]?.[0] || null) : (tables[table] || []) }).then(resolve, reject)
+      },
+    }
+    return chain
+  },
+}

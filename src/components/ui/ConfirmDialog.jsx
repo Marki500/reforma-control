@@ -1,12 +1,12 @@
 import { AlertTriangle } from 'lucide-react'
 
-export default function ConfirmDialog({ open, title, message, confirmLabel, onConfirm, onCancel }) {
+export default function ConfirmDialog({ open, title, message, confirmLabel, onConfirm, onCancel, busy = false }) {
   if (!open) return null
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
-      onClick={onCancel}
+      onClick={busy ? undefined : onCancel}
     >
       <div
         className="w-full max-w-sm animate-[fadeIn_0.15s_ease-out] rounded-2xl bg-white p-6 shadow-xl"
@@ -21,16 +21,18 @@ export default function ConfirmDialog({ open, title, message, confirmLabel, onCo
         <p className="mb-6 text-sm leading-relaxed text-stone-600">{message}</p>
         <div className="flex items-center justify-end gap-2">
           <button
+            disabled={busy}
             onClick={onCancel}
             className="rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-50"
           >
             Cancelar
           </button>
           <button
+            disabled={busy}
             onClick={onConfirm}
             className="rounded-xl bg-terracotta px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-terracotta/90"
           >
-            {confirmLabel || 'Eliminar'}
+            {busy ? 'Procesando…' : confirmLabel || 'Eliminar'}
           </button>
         </div>
       </div>

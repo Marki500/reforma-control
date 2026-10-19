@@ -21,6 +21,7 @@ import { Modal } from '../components/ui/Modal'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
 import { Button } from '../components/ui/Button'
 import { removeStoredFile } from '../services/storageCleanup'
+import { materialEstimate } from '../utils/dashboardFinance'
 import {
   Package,
   LayoutGrid,
@@ -32,6 +33,7 @@ import {
 
 export default function Materials() {
   const [operationError, setOperationError] = useState('')
+  const [loadError, setLoadError] = useState('')
   const [searchParams, setSearchParams] = useSearchParams()
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search') || '')
 
@@ -57,6 +59,7 @@ export default function Materials() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true)
+      setLoadError('')
       const [materialsData, categoriesData, roomsData] = await Promise.all([
         supabase
           .from('materials')
@@ -71,6 +74,7 @@ export default function Materials() {
       setCategories(categoriesData || [])
       setRooms(roomsData || [])
     } catch (err) {
+      setLoadError(err.message || 'No se pudieron cargar los materiales. Comprueba la conexión e inténtalo de nuevo.')
       console.error('Error loading materials:', err)
     } finally {
       setLoading(false)
@@ -114,7 +118,7 @@ export default function Materials() {
 
   // Calculate total (only materials with count_in_total)
   const totalCost = filteredMaterials.reduce(
-    (sum, m) => sum + (m.count_in_total !== false ? (m.price || 0) * (m.quantity || 1) : 0),
+    (sum, m) => sum + materialEstimate(m),
     0
   )
 
@@ -228,13 +232,7 @@ export default function Materials() {
         <div>
           <h1 className="text-2xl font-semibold text-stone-800">Materiales</h1>
           <p className="mt-1 text-sm text-stone-500">
-            {filteredMaterials.length} materiales ·{' '}
-            {new Intl.NumberFormat('es-ES', {
-              style: 'currency',
-              currency: 'EUR',
-              maximumFractionDigits: 0,
-            }).format(totalCost)}{' '}
-            total
+            {loadError ? 'Importes no disponibles' : `${filteredMaterials.length} materiales · ${new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(totalCost)} estimados`}
           </p>
         </div>
 
@@ -275,6 +273,7 @@ export default function Materials() {
       {/* View toggle */}
       <div className="hidden items-center justify-end gap-1 sm:flex">
         <button
+          aria-label="Vista de tarjetas"
           onClick={() => setViewMode('cards')}
           className={`rounded-lg p-2 transition-colors ${
             viewMode === 'cards'
@@ -285,6 +284,7 @@ export default function Materials() {
           <LayoutGrid size={18} />
         </button>
         <button
+          aria-label="Vista de tabla"
           onClick={() => setViewMode('table')}
           className={`rounded-lg p-2 transition-colors ${
             viewMode === 'table'
@@ -300,6 +300,12 @@ export default function Materials() {
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-stone-600" />
+        </div>
+      ) : loadError ? (
+        <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-800">
+          <h2 className="font-semibold">No se pudieron cargar los materiales</h2>
+          <p className="mt-2">{loadError}</p>
+          <button type="button" onClick={loadData} className="mt-4 rounded-lg border border-red-300 px-4 py-2 font-semibold hover:bg-red-100">Reintentar</button>
         </div>
       ) : filteredMaterials.length === 0 ? (
         <div className="rounded-2xl bg-white p-7 text-center shadow-sm sm:p-12">

@@ -5,6 +5,7 @@ import { deleteExpense, getExpenses, saveExpense } from '../services/expensesSer
 import { getSuppliers } from '../services/suppliersService'
 import { expenseStatus, expenseTotals, filterExpenses } from '../utils/expenses'
 import { formatCurrency } from '../utils/formatCurrency'
+import { recordedExpensesSummary } from '../utils/dashboardFinance'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 
@@ -39,7 +40,7 @@ export default function Expenses() {
 
   const totals = useMemo(() => expenseTotals(expenses), [expenses])
   const filtered = filterExpenses(expenses, filters)
-  const pending = Math.max(totals.actual - totals.paid, 0)
+  const pending = recordedExpensesSummary(expenses).pending
   const change = (key, value) => setForm(previous => ({ ...previous, [key]: value }))
 
   function edit(expense) {
@@ -80,7 +81,7 @@ export default function Expenses() {
   return (
     <div className="mx-auto max-w-6xl space-y-5">
       <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div><h1 className="text-2xl font-semibold text-stone-800">Gastos y pagos</h1><p className="mt-1 text-sm text-stone-500">Controla el coste previsto, el real y lo que queda por pagar.</p></div>
+        <div><h1 className="text-2xl font-semibold text-stone-800">Gastos y pagos</h1><p className="mt-1 text-sm text-stone-500">Controla lo previsto, los gastos comprometidos y los pagos registrados.</p></div>
         <Button className="w-full sm:w-auto" onClick={() => edit(null)} disabled={loading || Boolean(error)}><Plus size={16} /> Añadir gasto</Button>
       </div>
 
@@ -88,7 +89,7 @@ export default function Expenses() {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
-          ['Previsto', totals.budgeted], ['Coste real', totals.actual], ['Pagado', totals.paid], ['Pendiente', pending],
+          ['Previsto', totals.budgeted], ['Gastos comprometidos', totals.actual], ['Pagado', totals.paid], ['Pendiente', pending],
         ].map(([label, value]) => <div key={label} className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-xs text-stone-500">{label}</p><p className="mt-1 text-xl font-bold text-stone-800">{formatCurrency(value)}</p></div>)}
       </div>
 

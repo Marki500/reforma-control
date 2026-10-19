@@ -1,5 +1,32 @@
 # Corrección de almacenamiento
 
+## Mejoras del resumen y borrado seguro — 19 de octubre de 2026
+
+Antes de publicar esta versión, ejecutar una vez la migración completa
+`supabase/migrations/00029_safe_project_deletion.sql` en la misma base de datos
+que ya tiene las migraciones 00001–00028. Después reconstruir y desplegar la app.
+No utilizar `npm run migrate` para esta operación: el script histórico solo incluye 00004–00010.
+
+00029 conserva las comprobaciones de propietario y de última reforma activa.
+Registra los objetos de Storage y elimina la reforma en una sola transacción.
+Si la transacción falla, no se confirma ninguna limpieza. La interfaz elimina
+archivos solo después del éxito; cualquier fallo de Storage queda en una cola
+persistente, visible y reintentable desde Ajustes > Datos de la reforma.
+La cola limita el acceso a su solicitante y a los objetos exactos del borrado;
+los archivos referenciados por otras reformas se conservan.
+
+Sin 00029, la nueva operación de borrado falla sin tocar archivos. Esta migración
+se ha comprobado con PostgreSQL embebido y datos ficticios; no se ha ejecutado
+contra la base de datos desplegada desde esta revisión.
+
+Validación: `node --test tests/*.test.mjs` y `npm run build`.
+Prueba SQL opcional: instalar `@electric-sql/pglite` fuera del proyecto, definir
+`PGLITE_MODULE` con la ruta absoluta de su `dist/index.js` y ejecutar
+`node tests/project-deletion-db.mjs`. Nunca usa `DATABASE_URL`.
+Vista de comprobación sin datos reales: `npx vite --config tests/ui-preview.config.mjs`,
+abrir `http://127.0.0.1:4175/dashboard` o `/materials`; añadir `?error` para simular
+un fallo de carga. La vista solo admite lecturas ficticias y no sirve para guardar cambios.
+
 Sube los cambios del proyecto a GitHub y despliega el nuevo commit desde Coolify.
 
 En la aplicación de Reforma (no en el servicio Supabase), comprueba:

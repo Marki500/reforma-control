@@ -6,7 +6,7 @@ import { Modal } from '../ui/Modal'
 import ConfirmDialog from '../ui/ConfirmDialog'
 import {
   archiveProject, deleteProject, duplicateProject, getProjectDetails, getUserProjects,
-  restoreProject, updateProjectDetails,
+  restoreProject, updateProjectDetails, retryDeletedProjectFiles,
 } from '../../services/workspaceService'
 
 const emptyProject = {
@@ -23,6 +23,7 @@ export default function ProjectManagement() {
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [cleanup, setCleanup] = useState(null)
   const [duplicateOpen, setDuplicateOpen] = useState(false)
   const [duplicateName, setDuplicateName] = useState('')
   const [confirmation, setConfirmation] = useState(null)
@@ -37,7 +38,19 @@ export default function ProjectManagement() {
     finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load(); retryDeletedProjectFiles().then(setCleanup)
+    if (sessionStorage.getItem('nivel_project_deleted')) {
+      setNotice('Reforma eliminada. Se ha abierto tu siguiente reforma activa.')
+      sessionStorage.removeItem('nivel_project_deleted')
+    }
+  }, [])
+
+  async function retryCleanup() {
+    setBusy('cleanup')
+    try { setCleanup(await retryDeletedProjectFiles()) }
+    finally { setBusy('') }
+  }
 
   async function save(event) {
     event.preventDefault(); setBusy('save'); setError(''); setNotice('')
@@ -53,11 +66,16 @@ export default function ProjectManagement() {
   }
 
   async function executeConfirmation() {
-    if (!confirmation) return
+    if (!confirmation || busy) return
     setBusy(confirmation.type); setError('')
     try {
       if (confirmation.type === 'archive') await archiveProject(project.project_id)
-      if (confirmation.type === 'delete') await deleteProject(project.project_id)
+      if (confirmation.type === 'delete') {
+        await deleteProject(project.project_id)
+        sessionStorage.setItem('nivel_project_deleted', '1')
+        window.location.reload()
+        return
+      }
       window.location.reload()
     } catch (err) {
       setError(err.message || 'No se pudo completar la operación.')
@@ -80,6 +98,7 @@ export default function ProjectManagement() {
     <div className="flex items-start gap-3"><span className="rounded-xl bg-terracotta-light p-2.5 text-terracotta"><Building2 size={20} /></span><div><h2 className="text-lg font-semibold text-stone-700">Datos de la reforma</h2><p className="mt-1 text-sm text-stone-500">La ficha principal y el ciclo de vida de este proyecto.</p></div></div>
     {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     {notice && <p role="status" className="rounded-xl bg-olive-light p-3 text-sm text-olive">{notice}</p>}
+    {cleanup && (cleanup.pending > 0 || cleanup.error) && <div role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{cleanup.error ? 'No se pudo comprobar la limpieza de archivos pendientes.' : `La reforma está eliminada. Quedan ${cleanup.pending} archivos pendientes de limpieza.`} <button type="button" disabled={Boolean(busy)} onClick={retryCleanup} className="font-semibold underline">{busy === 'cleanup' ? 'Reintentando…' : 'Reintentar limpieza'}</button></div>}
     {loading ? <div className="grid min-h-40 place-items-center"><LoaderCircle className="animate-spin text-stone-400" /></div> : <>
       <form onSubmit={save} className="space-y-5 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-stone-200/70">
         <div className="grid gap-4 sm:grid-cols-2">
@@ -110,6 +129,6 @@ export default function ProjectManagement() {
     <Modal open={duplicateOpen} onClose={() => setDuplicateOpen(false)} title="Duplicar reforma">
       <form onSubmit={duplicate} className="space-y-4"><p className="text-sm leading-relaxed text-stone-500">Se copiarán los datos generales, categorías y estancias. La nueva reforma empezará sin presupuestos, tareas ni documentos.</p><Input label="Nombre de la nueva reforma" value={duplicateName} onChange={event => setDuplicateName(event.target.value)} maxLength={80} autoFocus required /><div className="flex justify-end gap-2"><Button type="button" variant="ghost" onClick={() => setDuplicateOpen(false)}>Cancelar</Button><Button type="submit" disabled={!duplicateName.trim() || busy === 'duplicate'}>{busy === 'duplicate' ? 'Duplicando…' : 'Crear copia'}</Button></div></form>
     </Modal>
-    <ConfirmDialog open={Boolean(confirmation)} title={confirmation?.title || ''} message={confirmation?.message || ''} onConfirm={executeConfirmation} onCancel={() => setConfirmation(null)} />
+    <ConfirmDialog open={Boolean(confirmation)} busy={Boolean(busy)} title={confirmation?.title || ''} message={confirmation?.message || ''} onConfirm={executeConfirmation} onCancel={() => setConfirmation(null)} />
   </section>
 }

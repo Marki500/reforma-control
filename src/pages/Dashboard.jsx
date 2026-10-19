@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../services/supabaseClient'
 import { formatCurrency } from '../utils/formatCurrency'
+import { materialEstimate, recordedExpensesSummary } from '../utils/dashboardFinance'
 import {
   getCategoryBudgets,
   upsertCategoryBudget,
@@ -21,19 +22,15 @@ import {
   Heart,
   CheckCircle,
   Clock,
-  TrendingUp,
   AlertTriangle,
   ArrowRight,
   XCircle,
   Plus,
   ExternalLink,
   Pencil,
-  StickyNote,
   LayoutGrid,
   Settings2,
-  FileText,
   Upload,
-  WalletCards,
 } from 'lucide-react'
 
 export default function Dashboard() {
@@ -63,8 +60,12 @@ export default function Dashboard() {
   const [uploadingCat, setUploadingCat] = useState(null)
   const [loading, setLoading] = useState(true)
   const [expenseSummary, setExpenseSummary] = useState(null)
+  const [expenseError, setExpenseError] = useState('')
+  const [materialsLoaded, setMaterialsLoaded] = useState(false)
 
   const loadDashboard = async () => {
+    setOperationError('')
+    setExpenseError('')
     try {
       const { data: userData } = await supabase.auth.getUser()
       if (!userData?.user) return
@@ -80,7 +81,7 @@ export default function Dashboard() {
       const counted = list.filter((m) => m.count_in_total !== false)
       setStats({
         total: list.length,
-        totalCost: counted.reduce((sum, m) => sum + (m.price || 0) * (m.quantity || 1), 0),
+        totalCost: counted.reduce((sum, m) => sum + materialEstimate(m), 0),
         favorites: list.filter((m) => m.status === 'Favorito').length,
         purchased: list.filter((m) => ['Comprado', 'Recibido'].includes(m.status)).length,
         discarded: list.filter((m) => m.status === 'Descartado').length,
@@ -88,15 +89,17 @@ export default function Dashboard() {
         highPriority: list.filter((m) => ['Alta', 'Urgente'].includes(m.priority)).length,
       })
 
+      setMaterialsLoaded(true)
       setRecentMaterials(list.slice(0, 5))
 
       const { data: expenses, error: expensesError } = await supabase
         .from('expenses')
         .select('amount, paid_amount')
-      if (!expensesError) {
-        const actual = (expenses || []).reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
-        const paid = (expenses || []).reduce((sum, item) => sum + (Number(item.paid_amount) || 0), 0)
-        setExpenseSummary({ actual, paid, pending: Math.max(actual - paid, 0) })
+      if (expensesError) {
+        setExpenseSummary(null)
+        setExpenseError('No se pudieron cargar los gastos y pagos. Los importes no están disponibles.')
+      } else {
+        setExpenseSummary(recordedExpensesSummary(expenses || []))
       }
 
       // Group spending by category (only counted materials)
@@ -108,7 +111,7 @@ export default function Dashboard() {
         if (!byCategory[m.category_id]) {
           byCategory[m.category_id] = { id: m.category_id, name: catName, spent: 0, materials: [] }
         }
-        byCategory[m.category_id].spent += (m.price || 0) * (m.quantity || 1)
+        byCategory[m.category_id].spent += materialEstimate(m)
         byCategory[m.category_id].materials.push({
           id: m.id,
           name: m.name,
@@ -129,11 +132,12 @@ export default function Dashboard() {
       setBudgets(budgetMap)
 
       // Load resumen notes
-      const { data: notes } = await supabase
+      const { data: notes, error: notesError } = await supabase
         .from('notes')
         .select('id, content, created_at')
         .eq('category', 'Resumen')
         .order('created_at', { ascending: false })
+      if (notesError) throw notesError
       setResumenNotes(notes || [])
 
       // Load grid config
@@ -240,6 +244,7 @@ export default function Dashboard() {
         </div>
          <div className="flex items-center gap-2 sm:gap-3">
           <button
+            aria-label="Importar material desde URL"
             onClick={() => navigate('/materials?action=import')}
             className="inline-flex items-center gap-1.5 rounded-xl border border-stone-300 bg-white px-2.5 py-2 text-sm font-medium text-stone-700 transition-all hover:bg-stone-50 sm:gap-2 sm:px-4"
           >
@@ -247,6 +252,7 @@ export default function Dashboard() {
             <span className="hidden sm:inline">Importar URL</span>
           </button>
           <button
+            aria-label="Añadir material"
             onClick={() => navigate('/materials?action=add')}
             className="inline-flex items-center gap-1.5 rounded-xl bg-stone-700 px-2.5 py-2 text-sm font-medium text-white transition-all hover:bg-stone-800 sm:gap-2 sm:px-4"
           >
@@ -256,62 +262,27 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Coste total */}
-      <div className="relative overflow-hidden rounded-[1.4rem] bg-stone-900 p-5 text-white shadow-[0_20px_55px_rgba(37,42,35,0.16)] sm:p-8">
-        <div className="absolute -right-12 -top-20 h-52 w-52 rounded-full bg-terracotta/20 blur-3xl" />
-        <div className="relative flex items-center gap-4">
-          <div className="rounded-xl bg-white/10 p-3 ring-1 ring-white/10">
-            <TrendingUp size={24} className="text-terracotta" />
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.12em] text-white/45">Coste total estimado</p>
-            <p className="mt-1 font-display text-3xl font-bold tracking-[-0.04em] text-white sm:text-4xl">
-              {formatCurrency(stats.totalCost)}
-            </p>
-          </div>
-        </div>
-      </div>
-
       <AttentionCenter />
 
-      {expenseSummary && (
-        <button type="button" onClick={() => navigate('/gastos')} className="grid w-full gap-4 rounded-2xl bg-white p-6 text-left shadow-sm transition-shadow hover:shadow-md sm:grid-cols-3">
-          <div className="flex items-center gap-3 sm:col-span-3"><div className="rounded-xl bg-gold-light p-3"><WalletCards size={22} className="text-gold" /></div><div><p className="font-semibold text-stone-800">Gastos y pagos</p><p className="text-xs text-stone-500">Ver movimientos</p></div></div>
-          <div><p className="text-xs text-stone-500">Coste real</p><p className="text-lg font-bold text-stone-800">{formatCurrency(expenseSummary.actual)}</p></div>
-          <div><p className="text-xs text-stone-500">Pagado</p><p className="text-lg font-bold text-green-700">{formatCurrency(expenseSummary.paid)}</p></div>
-          <div><p className="text-xs text-stone-500">Pendiente</p><p className="text-lg font-bold text-amber-700">{formatCurrency(expenseSummary.pending)}</p></div>
-        </button>
-      )}
-
-      {/* Resumen del proyecto */}
-      {resumenNotes.length > 0 && (
-        <div className="rounded-2xl bg-white p-4 shadow-sm sm:p-6">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="flex items-center gap-2 text-lg font-semibold text-stone-800">
-              <StickyNote size={18} className="text-olive" />
-              Resumen del proyecto
-            </h2>
-            <button
-              onClick={() => navigate('/notas')}
-              className="inline-flex items-center gap-1 text-sm font-medium text-stone-600 hover:text-stone-800"
-            >
-              Ver notas <ArrowRight size={16} />
-            </button>
-          </div>
-          <div className="space-y-3">
-            {resumenNotes.map((note) => (
-              <div key={note.id} className="rounded-xl border border-stone-100 bg-stone-50 p-4">
-                <div className="prose prose-stone prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: note.content }} />
-                <p className="mt-2 text-xs text-stone-400">
-                  {new Date(note.created_at).toLocaleDateString('es-ES', {
-                    day: 'numeric', month: 'short', year: 'numeric',
-                  })}
-                </p>
-              </div>
-            ))}
-          </div>
+      <section aria-label="Resumen económico" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <div className="rounded-2xl bg-stone-900 p-4 text-white sm:p-5">
+          <p className="text-xs font-medium text-white/75">Estimación de materiales</p>
+          <p className="mt-2 text-2xl font-bold tabular-nums">{materialsLoaded ? formatCurrency(stats.totalCost) : 'No disponible'}</p>
+          <p className="mt-2 text-xs leading-relaxed text-white/70">Precios × cantidades incluidos en totales. No incluye toda la obra.</p>
         </div>
-      )}
+        {expenseSummary ? <>
+          {[
+            { label: 'Gastos comprometidos', value: expenseSummary.committed, detail: 'Importes registrados en Gastos, incluidos presupuestos aceptados.' },
+            { label: 'Pagado', value: expenseSummary.paid, detail: 'Pagos registrados en Gastos.' },
+            { label: 'Pendiente de pago', value: expenseSummary.pending, detail: 'Saldo pendiente de cada gasto registrado.' },
+          ].map(item => <button key={item.label} type="button" onClick={() => navigate('/gastos')} className="rounded-2xl bg-white p-4 text-left shadow-sm sm:p-5 transition hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-olive">
+            <p className="text-xs font-medium text-stone-600">{item.label}</p>
+            <p className="mt-2 text-2xl font-bold tabular-nums text-stone-900">{formatCurrency(item.value)}</p>
+            <p className="mt-2 text-xs leading-relaxed text-stone-600">{item.detail}</p>
+          </button>)}
+        </> : <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900 sm:col-span-1 xl:col-span-3">{expenseError || 'Gastos y pagos no disponibles.'}<button type="button" onClick={loadDashboard} className="ml-2 font-semibold underline">Reintentar</button></div>}
+      </section>
+      <p className="!mt-3 text-xs leading-relaxed text-stone-600">La estimación de materiales y los gastos son registros independientes: no se suman para evitar contar dos veces una misma compra.</p>
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-6">
@@ -325,7 +296,7 @@ export default function Dashboard() {
               <div className={`mb-3 inline-flex rounded-xl p-2 ${card.color}`}>
                 <Icon size={18} />
               </div>
-              <p className="font-display text-2xl font-bold tabular-nums text-stone-900">{card.value}</p>
+              <p className="font-display text-2xl font-bold tabular-nums text-stone-900">{materialsLoaded ? card.value : '—'}</p>
               <p className="text-xs text-stone-500">{card.label}</p>
             </div>
           )
@@ -337,7 +308,7 @@ export default function Dashboard() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 text-lg font-semibold text-stone-800">
             <LayoutGrid size={18} className="text-olive" />
-            Presupuesto por categorías
+            Estimación por categorías
           </h2>
           <button
             onClick={() => setGridOpen(true)}
@@ -397,7 +368,7 @@ export default function Dashboard() {
 
                     <div className="mt-auto space-y-2">
                       <div className="flex items-baseline justify-between text-xs text-stone-500">
-                        <span>Gastado</span>
+                        <span>Estimación de materiales</span>
                         <span className="font-medium text-stone-700">
                           {formatCurrency(spent)}
                         </span>
@@ -433,7 +404,7 @@ export default function Dashboard() {
                             >
                               {remaining < 0
                                 ? `Excedido en ${formatCurrency(Math.abs(remaining))}`
-                                : `Restan ${formatCurrency(remaining)}`}
+                                : `Margen estimado: ${formatCurrency(remaining)}`}
                             </span>
                           </div>
                         </>
@@ -442,7 +413,7 @@ export default function Dashboard() {
                       {!hasBudget && (
                         <button
                           onClick={() => setGridOpen(true)}
-                          className="w-full rounded-lg border border-dashed border-stone-300 py-2 text-xs text-stone-400 transition-colors hover:border-stone-400 hover:text-stone-600"
+                          className="w-full rounded-lg border border-dashed border-stone-300 py-2 text-xs text-stone-600 transition-colors hover:border-stone-400 hover:text-stone-600"
                         >
                           + Asignar presupuesto
                         </button>
@@ -509,13 +480,13 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Partidas por categoría */}
+      {/* Materiales por categoría */}
       {categorySpending.length > 0 && (
         <div className="rounded-2xl bg-white p-6 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-stone-800">Partidas por categoría</h2>
+            <h2 className="text-lg font-semibold text-stone-800">Materiales por categoría</h2>
             <span className="text-sm text-stone-500">
-              {formatCurrency(categorySpending.reduce((s, c) => s + c.spent, 0))} gastado
+              {formatCurrency(categorySpending.reduce((s, c) => s + c.spent, 0))} estimado
             </span>
           </div>
 
@@ -562,13 +533,13 @@ export default function Dashboard() {
                       ) : (
                         <>
                           <span className="text-sm text-stone-500">
-                            {formatCurrency(cat.spent)} gastado
+                            {formatCurrency(cat.spent)} estimado
                           </span>
                           {hasBudget && (
                             <span className={`text-sm font-medium ${
                               remaining < 0 ? 'text-red-500' : 'text-stone-600'
                             }`}>
-                              · {formatCurrency(budget)} previsto
+                              · {formatCurrency(budget)} de presupuesto
                             </span>
                           )}
                           <button
@@ -598,7 +569,7 @@ export default function Dashboard() {
 
                   <div className="mt-2 space-y-0.5">
                     {cat.materials.slice(0, expandedCats[cat.id] ? undefined : 5).map((m) => (
-                      <div key={m.id} className="flex items-center justify-between text-xs text-stone-400">
+                      <div key={m.id} className="flex items-center justify-between text-xs text-stone-600">
                         <span className="truncate">{m.name}</span>
                         <span className="ml-2 flex-shrink-0">
                           {m.price ? `${formatCurrency(m.price)}${(m.quantity || 1) > 1 ? ` x${m.quantity}` : ''}` : '-'}
@@ -624,6 +595,27 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* Resumen del proyecto */}
+      {resumenNotes.length > 0 && (
+        <details className="rounded-2xl bg-white p-4 shadow-sm sm:p-5">
+          <summary className="cursor-pointer text-sm font-semibold text-stone-800">Notas del resumen · {resumenNotes.length} {resumenNotes.length === 1 ? 'nota' : 'notas'}</summary>
+          <button type="button" onClick={() => navigate('/notas')} className="my-3 text-sm font-medium text-stone-600 underline">Ver todas las notas</button>
+          <div className="space-y-3">
+            {resumenNotes.map((note) => (
+              <div key={note.id} className="rounded-xl border border-stone-100 bg-stone-50 p-4">
+                <div className="prose prose-stone prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: note.content }} />
+                <p className="mt-2 text-xs text-stone-600">
+                  {new Date(note.created_at).toLocaleDateString('es-ES', {
+                    day: 'numeric', month: 'short', year: 'numeric',
+                  })}
+                </p>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
 
       {/* Recent materials */}
       <div className="rounded-2xl bg-white p-6 shadow-sm">

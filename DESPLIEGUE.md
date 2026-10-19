@@ -1,5 +1,17 @@
 # Corrección de almacenamiento
 
+## Lectura visual de PDF — 19 de octubre de 2026
+
+Reconstruir y desplegar servidor y frontend. No requiere una migración nueva.
+`/api/health` debe mostrar `release: pdf-vision-v1`, `ai_pdf_vision: 1` y
+`ai_extraction_validation: 1`, conservando las funciones de facturas y presupuestos.
+Con Groq, conservar el respaldo `OPENROUTER_API_KEY` y `OPENROUTER_MODEL=openrouter/free`
+para documentos escaneados. No se usa el plugin de PDF remoto: las páginas se
+renderizan en el servidor y se envían como imágenes. Consultar `IA_PRESUPUESTOS.md`.
+El límite visual es de 8 páginas; las extracciones vacías se rechazan.
+Validado con proveedores simulados y renderizado local; falta la comprobación
+con el proveedor configurado tras desplegar. No se ha desplegado desde esta revisión.
+
 ## Facturas — 19 de octubre de 2026
 
 Aplicar `supabase/migrations/00030_invoices.sql` después de 00029 y desplegar tanto
@@ -80,7 +92,7 @@ La corrección final del botón de edición elimina completamente el envío HTML
 
 Después de `00025`, ejecuta una vez `supabase/migrations/00026_ai_usage_limits.sql` y después despliega la aplicación. La migración crea contadores diarios persistentes y atómicos: 5 usos por usuario y 40 para toda la aplicación, reiniciados según la fecha de Europe/Madrid. Si Supabase no permite comprobar o reservar un uso, NIVEL no llama a OpenRouter.
 
-Para usar Groq gratuitamente configura `AI_PROVIDER=groq`, `GROQ_API_KEY`, `GROQ_MODEL=qwen/qwen3.8-27b` y `AI_FREE_ONLY=true`. Conserva `OPENROUTER_API_KEY`, `OPENROUTER_MODEL=openrouter/free` y `OPENROUTER_PDF_ENGINE=pdf-text` para el respaldo gratuito de PDFs escaneados, demasiado largos para los 8K tokens/minuto de Groq Free o con fallos temporales. El servidor extrae primero el texto localmente y el respaldo no consume un segundo uso interno. Tras el deploy, `/api/health` debe mostrar `release: invoices-v1`, `ai_budget_async: 6`, `provider: groq`, `configured: true` y `free_only: true`.
+Para usar Groq gratuitamente configura `AI_PROVIDER=groq`, `GROQ_API_KEY`, `GROQ_MODEL=qwen/qwen3.8-27b` y `AI_FREE_ONLY=true`. Conserva `OPENROUTER_API_KEY`, `OPENROUTER_MODEL=openrouter/free` y `OPENROUTER_PDF_ENGINE=pdf-text` para el respaldo gratuito de PDFs escaneados, demasiado largos para los 8K tokens/minuto de Groq Free o con fallos temporales. El servidor extrae primero el texto localmente y el respaldo no consume un segundo uso interno. Tras el deploy, `/api/health` debe mostrar `release: pdf-vision-v1`, `ai_budget_async: 6`, `provider: groq`, `configured: true` y `free_only: true`.
 
 Si el contador devuelve `AI_USAGE_UNAVAILABLE` después de haber aplicado `00026`, ejecuta `supabase/migrations/00027_fix_ai_usage_counter.sql`. Corrige una ambigüedad de PostgreSQL en `usage_date`, conserva los contadores existentes y recarga el esquema de PostgREST.
 

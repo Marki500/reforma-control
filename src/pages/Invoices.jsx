@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { analysisProblem } from '../utils/documentAnalysis'
 import { Link, useSearchParams } from 'react-router-dom'
 import { FileText, Upload, Sparkles, Eye, Trash2, Receipt, Search } from 'lucide-react'
 import { getInvoices, analyzeInvoice, uploadInvoice, registerInvoice, getInvoiceFile, deleteInvoice, discardInvoiceUpload } from '../services/invoicesService'
@@ -64,10 +65,11 @@ export default function Invoices() {
   async function analyze() {
     if (!file || operation.current) return
     if (file.size > 14 * 1024 * 1024) { setAnalysisError('Para analizar con IA, el documento debe ocupar hasta 14 MB. Puedes rellenarlo manualmente.'); return }
-    operation.current = true; setBusy('analysis'); setAnalysisError(''); setFormError('')
+    operation.current = true; setBusy('analysis'); setAnalysis(null); setReviewed(false); setAnalysisError(''); setFormError('')
     try {
       const result = await analyzeInvoice(file), draft = result.draft
-      if (!draft.is_invoice) { setAnalysisError('La IA no reconoce este documento como una factura. Compruébalo y rellena los datos manualmente si corresponde.'); return }
+      const problem = analysisProblem(draft, 'invoice')
+      if (problem) { setAnalysis(null); setAnalysisError(problem); return }
       const supplier = suppliers.find(item => item.status !== 'Archivado' && normalizeInvoiceKey(item.name) === normalizeInvoiceKey(draft.supplier_name))
       setForm(previous => ({ ...previous, name: draft.document_title || previous.name, supplier_name: draft.supplier_name || '', supplier_tax_id: draft.supplier_tax_id || '', supplier_id: supplier?.id || '', invoice_number: draft.invoice_number || '', issued_date: draft.issued_date || '', due_date: draft.due_date || '', currency: draft.currency || '', subtotal: numberValue(draft.subtotal), tax_rate: numberValue(draft.tax_rate), tax_amount: numberValue(draft.tax_amount), total_amount: numberValue(draft.total_amount), category: invoiceCategories.includes(draft.suggested_category) ? draft.suggested_category : previous.category, notes: draft.notes || '' }))
       setAnalysis({ ...draft, model: result.model }); setReviewed(false)

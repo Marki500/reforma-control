@@ -1,51 +1,60 @@
-# IA para presupuestos
+# IA para presupuestos y facturas
 
-La aplicación analiza el PDF en segundo plano, presenta un borrador editable y solo guarda el presupuesto después de la aprobación del usuario. El proveedor se elige en el servidor; las claves nunca llegan al navegador.
+La aplicación analiza documentos en segundo plano y presenta un borrador editable.
+Solo se guardan los datos tras la revisión del usuario. Las claves permanecen en el servidor.
 
-## OpenRouter gratuito
+## Lectura de PDF
+
+El servidor extrae el texto de cada página con `pdf-parse`. No envía al modelo los
+metadatos Author/Creator ni utiliza el nombre del archivo como prueba del proveedor.
+Si alguna página tiene menos de 80 letras o números, convierte todas las páginas
+a PNG y utiliza visión. Esto cubre PDF escaneados y documentos mixtos.
+
+Si la extracción textual no reconoce el documento o no devuelve datos económicos,
+se realiza un único reintento visual. Una respuesta sin clasificación correcta o
+sin importes positivos en total, base o partidas termina como extracción incompleta,
+con aviso y opción de rellenar manualmente. No se presenta como borrador válido.
+Los datos obtenidos siguen necesitando revisión humana.
+
+Límites: 80 páginas y 120.000 caracteres para texto; 8 páginas y 12 MB de PNG para
+visión. Las imágenes se preparan con un máximo de 1800 × 2600 píxeles por página.
+Si se supera un límite, se rechaza el análisis completo con un aviso: no se analiza
+solo una parte del documento. Se mantiene el límite de subida para IA de 14 MB.
+
+## Proveedores
 
 ```env
-AI_PROVIDER=openrouter
+AI_PROVIDER=groq
+AI_FREE_ONLY=true
+GROQ_API_KEY=...
+GROQ_MODEL=qwen/qwen3.8-27b
 OPENROUTER_API_KEY=...
 OPENROUTER_MODEL=openrouter/free
-OPENROUTER_PDF_ENGINE=pdf-text
 ```
 
-`pdf-text` funciona para PDF con texto seleccionable. Los documentos escaneados necesitan un motor OCR. Para volver a Gemini, usa `AI_PROVIDER=gemini` y configura `GEMINI_API_KEY`.
+Groq recibe texto extraído localmente. Los documentos que necesitan visión pasan
+a OpenRouter; si Groq devuelve una extracción vacía, el respaldo fuerza visión.
+Sin respaldo configurado, se muestra un aviso y queda disponible el formulario manual.
+También se puede usar directamente `AI_PROVIDER=openrouter`, o `AI_PROVIDER=gemini`
+con `GEMINI_API_KEY` y `AI_FREE_ONLY=false` si se acepta ese proveedor.
 
-## Flujo
+OpenRouter recibe texto o imágenes PNG, sin adjunto PDF ni plugin de extracción.
+No se activa un servicio OCR de pago. `OPENROUTER_PDF_ENGINE=pdf-text` puede conservarse
+por compatibilidad de configuración; ya no determina la lectura del PDF.
+Los límites gratuitos del proveedor siguen aplicándose. Un reintento comparte
+la reserva de uso interna, aunque implica otra petición al proveedor.
 
-1. Seleccionar un presupuesto PDF ya subido.
-2. Extraer su texto. Si es un escaneo sin texto, necesitará OCR.
-3. Mostrar un resumen: partidas, cantidades, importes, impuestos y condiciones. Los datos ausentes se indican como desconocidos.
-4. Proponer materiales y tareas en una lista editable, vinculando cada propuesta a su página o fragmento original.
-5. El usuario marca qué quiere añadir y confirma. La IA no modifica la app por sí sola.
+## Despliegue y validación
 
-Hay que conservar la diferencia entre precio unitario y total de partida, separar IVA y evitar convertir automáticamente servicios/mano de obra en materiales. Los importes se validan mediante código; un resumen no es una comprobación contable.
+Reconstruir y desplegar servidor y frontend. Esta corrección no añade migraciones.
+`/api/health` identifica `release: pdf-vision-v1`, `ai_pdf_vision: 1`,
+`ai_extraction_validation: 1`, `ai_budget_async: 6` y `ai_invoice_async: 1`.
+El contenedor incluye la utilidad de validación compartida por cliente y servidor.
 
-## Primera prueba gratuita en Ubuntu
+Ejecutar `node --test tests/*.test.mjs` y `npm run build`.
+Las pruebas usan PDF sintéticos y proveedores simulados: cubren texto, escaneos,
+documentos mixtos, límites, reintento visual, rechazo de respuestas vacías y cupo.
+No envían documentos reales ni comprueban la precisión de un modelo remoto.
 
-Ollama con un modelo local pequeño permite probar sin pagar una API. Sigue habiendo consumo de electricidad, CPU, RAM y disco. Con unos 8 GB compartidos con Supabase y Coolify no podemos prometer capacidad ni velocidad sin medirlo.
-
-Antes de instalar, ejecutar en el VPS:
-
-```bash
-free -h
-lscpu
-df -h
-docker stats --no-stream
-```
-
-Si hay memoria suficiente, probar un modelo pequeño como `qwen2.5:1.5b` con presupuestos ficticios cortos. Es una prueba de viabilidad, no una garantía de precisión. Comparar manualmente importes, omisiones y tiempo de respuesta. Documentación: https://docs.ollama.com/linux y https://ollama.com/library/qwen2.5:1.5b.
-
-La instalación y configuración del VPS se harán después de revisar esos datos. Si el VPS va justo de memoria, ejecutar Ollama en otro ordenador y conectarlo por una red privada como Tailscale. No publicar la API de Ollama en Internet. Para uso local, se puede desactivar el modo cloud con `OLLAMA_NO_CLOUD=1`.
-
-## Integración cuando la prueba funcione
-
-El backend de la app hablará con Ollama por una URL interna configurada en runtime, nunca directamente desde el navegador. En Docker, localhost significa el propio contenedor: hay que configurar la red y dirección del servicio correctamente.
-
-El endpoint verificará sesión y propiedad del presupuesto; limitará páginas, tamaño y tiempo; tratará todo el texto del PDF como datos, nunca como instrucciones; pedirá una respuesta estructurada y validará su esquema. La selección confirmada se guardará con protección frente a duplicados y errores parciales.
-
-Primero probar PDFs con texto. Después añadir OCR para escaneos, y por último la selección para crear materiales/tareas. No subir presupuestos reales a servicios externos sin elegir previamente proveedor y condiciones de uso.
-
-Referencia sobre ejecución local y memoria: https://docs.ollama.com/faq.
+Referencias: [imágenes en OpenRouter](https://openrouter.ai/docs/guides/overview/multimodal/overview)
+y [comprensión de imágenes en Gemini](https://ai.google.dev/gemini-api/docs/image-understanding).

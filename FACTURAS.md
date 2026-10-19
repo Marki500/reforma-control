@@ -40,10 +40,12 @@ Aplicar primero 00029 si está pendiente y después, una sola vez,
 La migración necesita las anteriores y no debe ejecutarse con el script histórico
 `npm run migrate`, que solo contiene las migraciones 00004–00010.
 
-`/api/health` debe mostrar `release: invoices-v1`, `ai_invoice_async: 1` y
+`/api/health` debe mostrar `release: pdf-vision-v1`, `ai_invoice_async: 1` y
 `ai_budget_async: 6`. Se conservan proveedor, claves, restricciones de coste y cupo
 compartido con Presupuestos. Con Groq, los PDF con texto se extraen localmente;
-las imágenes usan el respaldo visual de OpenRouter. Sin respaldo, el formulario
+los PDF escaneados o mixtos y las imágenes usan el respaldo visual de OpenRouter.
+La lectura visual admite hasta 8 páginas; una extracción sin importes se rechaza.
+Consultar `IA_PRESUPUESTOS.md` para el detalle de límites y reintentos. Sin respaldo, el formulario
 manual sigue disponible. No se ha llamado a proveedores reales durante las pruebas.
 
 ## Validación local

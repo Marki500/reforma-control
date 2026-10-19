@@ -1,3 +1,4 @@
+import { pdfFixture } from './pdfFixtures.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import http from 'node:http'
@@ -48,7 +49,7 @@ test('invoice PDF and image analyses use invoice extraction, private polling and
     assert.equal((await fetch(`${base}/api/analyze-invoice`, { method: 'POST', headers: { Authorization: 'Bearer invoice-test-invalid' }, body: invalid })).status, 400)
     assert.equal(reservations.length, 0)
     for (const [index, mime] of ['application/pdf', 'image/png'].entries()) {
-      const body = new FormData(); body.append('file', new Blob(['fake-test-document'], { type: mime }), mime === 'image/png' ? 'invoice.png' : 'invoice.pdf')
+      const body = new FormData(); body.append('file', new Blob([mime === 'application/pdf' ? pdfFixture(['scan']) : 'fake-test-image'], { type: mime }), mime === 'image/png' ? 'invoice.png' : 'invoice.pdf')
       const response = await fetch(`${base}/api/analyze-invoice`, { method: 'POST', headers: { Authorization: `Bearer invoice-test-${index}` }, body })
       assert.equal(response.status, 202, await response.clone().text())
       const job = await response.json()
@@ -70,8 +71,9 @@ test('invoice PDF and image analyses use invoice extraction, private polling and
     assert.equal(reservations.length, 2, 'Groq fallback must not reserve another quota usage')
     assert.equal(requests.length, 2)
     assert.match(requests[0].messages[0].content[0].text, /is_invoice/)
-    assert.match(requests[0].messages[0].content[1].file.file_data, /^data:application\/pdf;base64,/)
-    assert.equal(requests[0].plugins[0].pdf.engine, 'pdf-text')
+    assert.match(requests[0].messages[0].content[2].image_url.url, /^data:image\/png;base64,/)
+    assert.equal('plugins' in requests[0], false)
+    assert.doesNotMatch(JSON.stringify(requests), /AUTOR_METADATA/)
     assert.match(requests[1].messages[0].content[1].image_url.url, /^data:image\/png;base64,/)
     assert.equal('plugins' in requests[1], false, 'images must not be sent to the PDF parser')
   } finally {

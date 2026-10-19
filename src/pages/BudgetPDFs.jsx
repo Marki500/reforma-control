@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { analysisProblem } from '../utils/documentAnalysis'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   FileText,
@@ -118,16 +119,19 @@ export default function BudgetPDFs() {
       return
     }
     setAnalysisState('analyzing')
+    setAnalysisResult(null)
     setAnalysisError('')
     try {
       const result = await analyzeBudgetPDF(uploadForm.file)
       const draft = result.draft
-      setAnalysisResult({ ...draft, model: result.model })
-      if (!draft.is_budget) {
+      const problem = analysisProblem(draft, 'budget')
+      if (problem) {
+        setAnalysisResult(null)
         setAnalysisState('idle')
-        setAnalysisError('La IA no reconoce este archivo como un presupuesto. Puedes revisarlo o rellenar los datos manualmente.')
+        setAnalysisError(problem)
         return
       }
+      setAnalysisResult({ ...draft, model: result.model, reading_mode: result.reading_mode })
       const supplier = suppliers.find(item => normalizeName(item.name) === normalizeName(draft.supplier_name))
       const category = categories.find(item => {
         const categoryName = normalizeName(item.name)
@@ -453,11 +457,12 @@ export default function BudgetPDFs() {
                   <button type="button" onClick={() => { setAnalysisState('manual'); setAnalysisError('') }} className="min-h-[40px] w-full text-xs font-medium text-stone-500 hover:text-stone-800">Rellenar manualmente</button>
                 </div>
               )}
-              {analysisState === 'analyzing' && <div className="flex min-h-[90px] flex-col items-center justify-center gap-2 rounded-xl bg-stone-50 text-sm text-stone-600"><span className="h-5 w-5 animate-spin rounded-full border-2 border-stone-300 border-t-terracotta" /><span>Leyendo texto, tablas e importes…</span></div>}
+              {analysisState === 'analyzing' && <div className="flex min-h-[90px] flex-col items-center justify-center gap-2 rounded-xl bg-stone-50 text-sm text-stone-600"><span className="h-5 w-5 animate-spin rounded-full border-2 border-stone-300 border-t-terracotta" /><span>Leyendo texto, tablas e importes; si está escaneado, se analiza visualmente…</span></div>}
 
               {analysisState === 'ready' && analysisResult && (
                 <div className="space-y-3 rounded-xl border border-green-200 bg-green-50/70 p-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-green-800"><Sparkles size={16} /> Borrador generado · revísalo antes de guardar</div>
+                  {analysisResult.reading_mode === 'vision' && <p className="text-xs text-green-800">PDF leído visualmente a partir de sus páginas.</p>}
                   <div className="grid grid-cols-2 gap-2 text-xs text-stone-600">
                     {analysisResult.supplier_name && <div><span className="block text-stone-400">Proveedor detectado</span>{analysisResult.supplier_name}</div>}
                     {analysisResult.quote_number && <div><span className="block text-stone-400">N.º presupuesto</span>{analysisResult.quote_number}</div>}

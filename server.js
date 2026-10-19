@@ -7,7 +7,8 @@ import { fileURLToPath } from 'url'
 import { randomUUID } from 'node:crypto'
 import * as cheerio from 'cheerio'
 import multer from 'multer'
-import { PDFParse } from 'pdf-parse'
+import { inspectPdf, prepareDocumentContent, PdfDocumentError } from './server/pdfDocument.js'
+import { analysisProblem, assertReadableAnalysis } from './src/utils/documentAnalysis.js'
 import { canonicalizeRemoteUrl, fetchRemote, normalizeRemoteUrl, RemoteFetchError } from './server/remoteFetch.js'
 import { budgetAnalysisPrompt, budgetAnalysisSchema, sanitizeBudgetAnalysis } from './server/budgetAnalysis.js'
 import { invoiceAnalysisPrompt, invoiceAnalysisSchema, sanitizeInvoiceAnalysis } from './server/invoiceAnalysis.js'
@@ -109,8 +110,8 @@ app.get('/api/health', (_req, res) => {
   const selectedModel = aiProvider === 'groq' ? groqModel : aiProvider === 'openrouter' ? openRouterModel : aiModel
   res.status(200).json({
     status: 'ok',
-    release: 'invoices-v1',
-    features: { ai_invoice_async: 1, ai_budget_async: 6, ai_usage_limits: 1, project_invitation_email: 1, project_comments: 1 },
+    release: 'pdf-vision-v1',
+    features: { ai_pdf_vision: 1, ai_extraction_validation: 1, ai_invoice_async: 1, ai_budget_async: 6, ai_usage_limits: 1, project_invitation_email: 1, project_comments: 1 },
     ai: { provider: aiProvider, model: selectedModel, configured, free_only: aiFreeOnly, ...(aiProvider === 'groq' ? { fallback: openRouterApiKey ? 'openrouter/free' : null } : {}) },
     mail: { provider: 'mailjet', configured: Boolean(mailjetApiKey && mailjetSecretKey && appPublicUrl) },
   })
@@ -590,67 +591,19 @@ function getGenerateContentText(payload) {
   return (payload?.candidates?.[0]?.content?.parts || []).map(part => part?.text || '').join('')
 }
 
-async function uploadGeminiFile(file) {
-  const startResponse = await fetch(`${geminiApiBaseUrl}/upload/v1beta/files`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': geminiApiKey,
-      'X-Goog-Upload-Protocol': 'resumable',
-      'X-Goog-Upload-Command': 'start',
-      'X-Goog-Upload-Header-Content-Length': String(file.size),
-      'X-Goog-Upload-Header-Content-Type': file.mimetype,
-    },
-    signal: AbortSignal.timeout(15000),
-    body: JSON.stringify({ file: { display_name: file.originalname || 'documento' } }),
-  })
-  if (!startResponse.ok) {
-    const payload = await startResponse.json().catch(() => ({}))
-    const error = new Error(payload?.error?.message || `Gemini rechazó el inicio de la subida (HTTP ${startResponse.status}).`)
-    error.status = startResponse.status
-    throw error
-  }
-  const uploadUrl = startResponse.headers.get('x-goog-upload-url')
-  if (!uploadUrl) throw new Error('Gemini no devolvió una dirección para subir el PDF.')
-  const uploadResponse = await fetch(uploadUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Length': String(file.size),
-      'X-Goog-Upload-Offset': '0',
-      'X-Goog-Upload-Command': 'upload, finalize',
-    },
-    signal: AbortSignal.timeout(45000),
-    body: file.buffer,
-  })
-  const payload = await uploadResponse.json().catch(() => ({}))
-  if (!uploadResponse.ok || !payload?.file?.uri) {
-    const error = new Error(payload?.error?.message || `Gemini no pudo recibir el PDF (HTTP ${uploadResponse.status}).`)
-    error.status = uploadResponse.status
-    throw error
-  }
-  return payload.file
-}
-
-async function deleteGeminiFile(file) {
-  if (!/^files\/[a-zA-Z0-9_-]+$/.test(file?.name || '')) return
-  await fetch(`${geminiApiBaseUrl}/v1beta/${file.name}`, {
-    method: 'DELETE',
-    headers: { 'x-goog-api-key': geminiApiKey },
-    signal: AbortSignal.timeout(10000),
-  }).catch(() => {})
-}
-
-async function requestBudgetAnalysisWithModel(fileUri, model, file) {
+async function requestBudgetAnalysisWithModel(source, model, file) {
   const { prompt, schema, sanitize } = documentAnalysisSpec(file)
+  const parts = source.parts.map(part => {
+    if (part.type === 'text') return { text: part.text }
+    const match = part.image_url.url.match(/^data:([^;]+);base64,(.+)$/s)
+    return { inline_data: { mime_type: match[1], data: match[2] } }
+  })
   const response = await fetch(`${geminiApiBaseUrl}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
     signal: AbortSignal.timeout(45000),
     body: JSON.stringify({
-      contents: [{ parts: [
-        { file_data: { mime_type: file.mimetype, file_uri: fileUri } },
-        { text: `${prompt}\nDevuelve exclusivamente un objeto JSON válido que cumpla este esquema: ${JSON.stringify(schema)}` },
-      ] }],
+      contents: [{ parts: [{ text: `${prompt}\nDevuelve exclusivamente un objeto JSON válido que cumpla este esquema: ${JSON.stringify(schema)}` }, ...parts] }],
       generationConfig: { responseMimeType: 'application/json', temperature: 0.1, maxOutputTokens: 8192 },
     }),
   })
@@ -660,34 +613,29 @@ async function requestBudgetAnalysisWithModel(fileUri, model, file) {
     error.status = response.status
     throw error
   }
-
-  const text = getGenerateContentText(payload)
-  const jsonText = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+  const jsonText = getGenerateContentText(payload).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
   if (!jsonText) throw new Error('La IA no devolvió datos para este documento.')
   try {
-    return { draft: sanitize(JSON.parse(jsonText)), model, provider: 'gemini' }
-  } catch {
-    throw new Error('La IA devolvió una respuesta que no se pudo interpretar. Inténtalo de nuevo.')
-  }
+    return { draft: sanitize(JSON.parse(jsonText)), model, provider: 'gemini', reading_mode: source.mode, page_count: source.pageCount }
+  } catch { throw new Error('La IA devolvió una respuesta que no se pudo interpretar. Inténtalo de nuevo.') }
 }
 
-async function requestBudgetAnalysis(file) {
-  const uploadedFile = await uploadGeminiFile(file)
-  try {
-    let lastError
-    for (const model of aiFallbackModels) {
-      try {
-        return await requestBudgetAnalysisWithModel(uploadedFile.uri, model, file)
-      } catch (error) {
-        lastError = error
-        if (error?.status !== 404) throw error
-      }
+async function requestBudgetAnalysis(file, { forceVision = false } = {}) {
+  const source = await prepareDocumentContent(file, { forceVision })
+  let lastError
+  for (const model of aiFallbackModels) {
+    try {
+      const result = await requestBudgetAnalysisWithModel(source, model, file)
+      if (analysisProblem(result.draft, file.documentKind) && file.mimetype === 'application/pdf' && source.mode === 'text') return requestBudgetAnalysis(file, { forceVision: true })
+      assertReadableAnalysis(result.draft, file.documentKind)
+      return result
+    } catch (error) {
+      lastError = error
+      if (error?.status !== 404) throw error
     }
-    lastError.triedModels = aiFallbackModels
-    throw lastError
-  } finally {
-    await deleteGeminiFile(uploadedFile)
   }
+  lastError.triedModels = aiFallbackModels
+  throw lastError
 }
 
 function getOpenRouterText(payload) {
@@ -697,10 +645,18 @@ function getOpenRouterText(payload) {
   return ''
 }
 
-async function requestOpenRouterBudgetAnalysis(file) {
+async function requestOpenRouterBudgetAnalysis(file, { forceVision = false } = {}) {
+  const source = await prepareDocumentContent(file, { forceVision })
+  const result = await requestOpenRouterDocument(file, source)
+  if (analysisProblem(result.draft, file.documentKind) && file.mimetype === 'application/pdf' && source.mode === 'text') {
+    return requestOpenRouterBudgetAnalysis(file, { forceVision: true })
+  }
+  assertReadableAnalysis(result.draft, file.documentKind)
+  return { ...result, reading_mode: source.mode, page_count: source.pageCount }
+}
+
+async function requestOpenRouterDocument(file, source) {
   const { prompt, schema, sanitize } = documentAnalysisSpec(file)
-  const isImage = file.mimetype.startsWith('image/')
-  const fileData = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`
   const response = await fetch(`${openRouterApiBaseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -716,10 +672,9 @@ async function requestOpenRouterBudgetAnalysis(file) {
         role: 'user',
         content: [
           { type: 'text', text: `${prompt}\nDevuelve exclusivamente un objeto JSON valido que cumpla este esquema: ${JSON.stringify(schema)}` },
-          isImage ? { type: 'image_url', image_url: { url: fileData } } : { type: 'file', file: { filename: file.originalname || 'documento.pdf', file_data: fileData } },
+          ...source.parts,
         ],
       }],
-      ...(!isImage ? { plugins: [{ id: 'file-parser', pdf: { engine: openRouterPdfEngine } }] } : {}),
       response_format: { type: 'json_object' },
       usage: { include: true },
       temperature: 0.1,
@@ -753,29 +708,16 @@ async function extractPdfText(file) {
   if (file.mimetype !== 'application/pdf') {
     const error = new Error('El análisis de imágenes requiere el respaldo visual de OpenRouter. Puedes rellenar la factura manualmente.'); error.code = 'IMAGE_REQUIRES_VISION'; error.aiProvider = 'groq'; throw error
   }
-  const parser = new PDFParse({ data: file.buffer })
-  try {
-    const result = await parser.getText()
-    const normalized = String(result?.text || '').replace(/\0/g, '').replace(/[ \t]+\n/g, '\n').trim()
-    if (normalized.length < 80) {
-      const error = new Error('El PDF no contiene texto suficiente para analizarlo directamente con Groq.')
-      error.code = 'PDF_TEXT_UNAVAILABLE'
-      error.aiProvider = 'groq'
-      throw error
-    }
-    // The free Groq tier allows 8K tokens/minute for the selected models. Do
-    // not truncate long quotes because that could silently omit line items;
-    // let the complete-PDF OpenRouter fallback handle them instead.
-    if (normalized.length > 18000) {
-      const error = new Error('El PDF contiene demasiado texto para el límite gratuito por minuto de Groq.')
-      error.code = 'PDF_TEXT_TOO_LONG_FOR_GROQ_FREE'
-      error.aiProvider = 'groq'
-      throw error
-    }
-    return normalized
-  } finally {
-    await parser.destroy().catch(() => {})
+  const inspection = await inspectPdf(file)
+  if (inspection.needsVision) {
+    const error = new Error('El PDF contiene páginas sin texto suficiente y necesita lectura visual.')
+    error.code = 'PDF_TEXT_UNAVAILABLE'; error.aiProvider = 'groq'; throw error
   }
+  if (inspection.text.length > 18000) {
+    const error = new Error('El PDF contiene demasiado texto para el límite gratuito de Groq.')
+    error.code = 'PDF_TEXT_TOO_LONG_FOR_GROQ_FREE'; error.aiProvider = 'groq'; throw error
+  }
+  return inspection.text
 }
 
 async function requestGroqBudgetAnalysis(file) {
@@ -811,8 +753,11 @@ async function requestGroqBudgetAnalysis(file) {
     throw error
   }
   try {
-    return { draft: sanitize(JSON.parse(text)), model: payload?.model || groqModel, usage: payload?.usage || null, provider: 'groq' }
-  } catch {
+    const draft = sanitize(JSON.parse(text))
+    assertReadableAnalysis(draft, file.documentKind)
+    return { draft, model: payload?.model || groqModel, usage: payload?.usage || null, provider: 'groq', reading_mode: 'text', page_count: (await inspectPdf(file)).pageCount }
+  } catch (cause) {
+    if (cause?.code === 'AI_EXTRACTION_INCOMPLETE') throw cause
     const error = new Error('Groq devolvió una respuesta que no se pudo interpretar. Inténtalo de nuevo.')
     error.aiProvider = 'groq'
     throw error
@@ -823,9 +768,10 @@ async function requestGroqBudgetAnalysisWithFallback(file) {
   try {
     return await requestGroqBudgetAnalysis(file)
   } catch (primaryError) {
+    if (primaryError instanceof PdfDocumentError) throw primaryError
     if (!openRouterApiKey) throw primaryError
     console.warn('[AI budget analysis:fallback]', { from: 'groq', to: 'openrouter', reason: primaryError?.code || primaryError?.status || primaryError?.message || 'Unknown error' })
-    return requestOpenRouterBudgetAnalysis(file)
+    return requestOpenRouterBudgetAnalysis(file, { forceVision: primaryError?.code === 'AI_EXTRACTION_INCOMPLETE' })
   }
 }
 
@@ -836,6 +782,8 @@ function requestConfiguredBudgetAnalysis(file) {
 }
 
 function classifyAIError(error) {
+  if (error instanceof PdfDocumentError) return { status: 422, code: error.code, message: error.message }
+  if (error?.code === 'AI_EXTRACTION_INCOMPLETE') return { status: 422, code: error.code, message: error.message }
   const failedProvider = error?.aiProvider || aiProvider
   const providerName = failedProvider === 'openrouter' ? 'OpenRouter' : failedProvider === 'groq' ? 'Groq' : 'Gemini'
   const message = error instanceof Error ? error.message : ''
@@ -843,6 +791,8 @@ function classifyAIError(error) {
     return { status: 504, code: 'AI_TIMEOUT', message: 'La IA tardó demasiado en procesar el documento.' }
   }
   if (error?.code === 'IMAGE_REQUIRES_VISION') return { status: 503, code: 'AI_VISION_UNAVAILABLE', message }
+  if (error?.code === 'PDF_TEXT_UNAVAILABLE') return { status: 503, code: 'AI_VISION_UNAVAILABLE', message: 'Este PDF necesita lectura visual. Configura el respaldo de OpenRouter en el servidor o rellena los datos manualmente.' }
+  if (error?.code === 'PDF_TEXT_TOO_LONG_FOR_GROQ_FREE') return { status: 422, code: error.code, message }
   if (error?.status === 429) return { status: 429, code: 'AI_RATE_LIMIT', message: `Se ha alcanzado temporalmente el límite gratuito de ${providerName}.` }
   if ([401, 403].includes(error?.status)) return { status: 503, code: 'AI_KEY_REJECTED', message: `${providerName} ha rechazado la clave API configurada.` }
   if (error?.status === 404) return { status: 503, code: 'AI_MODEL_NOT_FOUND', message: failedProvider === 'openrouter' ? `El modelo ${openRouterModel} no está disponible en OpenRouter.` : failedProvider === 'groq' ? `El modelo ${groqModel} no está disponible en Groq.` : `Ninguno de los modelos configurados está disponible para esta clave (${(error.triedModels || [aiModel]).join(', ')}).` }
@@ -856,9 +806,10 @@ async function runBudgetAnalysisJob(jobId, file, diagnostic) {
   const startedAt = Date.now()
   console.info('[AI budget analysis:start]', { ...diagnostic, bytes: file.size })
   try {
-    const { draft, model, usage, provider = aiProvider } = await requestConfiguredBudgetAnalysis(file)
-    aiAnalysisJobs.set(jobId, { ...aiAnalysisJobs.get(jobId), status: 'complete', draft, model, usage, provider })
-    console.info('[AI budget analysis:success]', { ...diagnostic, selectedProvider: provider, selectedModel: model, durationMs: Date.now() - startedAt, lineItems: draft.line_items.length, tokens: usage?.total_tokens ?? null, cost: usage?.cost ?? null })
+    const { draft, model, usage, provider = aiProvider, reading_mode, page_count } = await requestConfiguredBudgetAnalysis(file)
+    assertReadableAnalysis(draft, file.documentKind)
+    aiAnalysisJobs.set(jobId, { ...aiAnalysisJobs.get(jobId), status: 'complete', draft, model, usage, provider, reading_mode, page_count })
+    console.info('[AI budget analysis:success]', { ...diagnostic, selectedProvider: provider, selectedModel: model, readingMode: reading_mode, pages: page_count, durationMs: Date.now() - startedAt, lineItems: draft.line_items.length, tokens: usage?.total_tokens ?? null, cost: usage?.cost ?? null })
   } catch (error) {
     const classified = classifyAIError(error)
     aiAnalysisJobs.set(jobId, { ...aiAnalysisJobs.get(jobId), status: 'error', failure: classified })
@@ -922,7 +873,7 @@ app.get(['/api/analyze-budget/:jobId', '/api/analyze-invoice/:jobId'], (req, res
   }
   if (job.status === 'processing') return res.status(202).json({ status: 'processing', elapsed_ms: Date.now() - job.createdAt, request_id: job.requestId })
   if (job.status === 'error') return res.status(job.failure.status).json({ error: job.failure.message, code: job.failure.code, request_id: job.requestId })
-  return res.json({ status: 'complete', draft: job.draft, provider: job.provider, model: job.model, usage: job.usage, request_id: job.requestId })
+  return res.json({ status: 'complete', draft: job.draft, provider: job.provider, model: job.model, usage: job.usage, reading_mode: job.reading_mode, page_count: job.page_count, request_id: job.requestId })
 })
 
 app.post('/api/upload-file', requireSession, upload.single('file'), async (req, res) => {

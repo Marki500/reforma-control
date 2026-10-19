@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import http from 'node:http'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
+import { pdfFixture } from './pdfFixtures.mjs'
 import { normalizeStorageUrl } from '../src/utils/storageUrl.js'
 import { normalizeProductUrl } from '../src/utils/productUrl.js'
 import { canonicalizeRemoteUrl, createPinnedLookup, isPublicIp, normalizeRemoteUrl, parseRemoteUrl, RemoteFetchError } from '../server/remoteFetch.js'
@@ -159,7 +160,7 @@ test('uploads require a valid user and forward that user to Storage', async () =
     assert.equal(documentResponse.status, 200, await documentResponse.clone().text())
     assert.match((await documentResponse.json()).url, /^aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\//)
     const analysisBody = new FormData()
-    analysisBody.append('file', new Blob(['test-only-content'], { type: 'application/pdf' }), 'quote.pdf')
+    analysisBody.append('file', new Blob([pdfFixture()], { type: 'application/pdf' }), 'quote.pdf')
     const startedAnalysis = await fetch(`${base}/api/analyze-budget`, { method: 'POST', headers: { Authorization: 'Bearer test-user-token' }, body: analysisBody })
     assert.equal(startedAnalysis.status, 202)
     const analysisJob = await startedAnalysis.json()
@@ -176,8 +177,9 @@ test('uploads require a valid user and forward that user to Storage', async () =
     assert.equal(analysisResult.model, 'free-test-model')
     assert.equal(openRouterRequests.length, 1)
     assert.equal(openRouterRequests[0].headers.authorization, 'Bearer test-openrouter-key')
-    assert.equal(openRouterRequests[0].body.plugins[0].pdf.engine, 'pdf-text')
-    assert.match(openRouterRequests[0].body.messages[0].content[1].file.file_data, /^data:application\/pdf;base64,/)
+    assert.equal('plugins' in openRouterRequests[0].body, false)
+    assert.equal(analysisResult.reading_mode, 'text')
+    assert.match(openRouterRequests[0].body.messages[0].content[1].text, /Total 121/)
     assert.equal(uploads.length, 3)
     for (const upload of uploads) {
       assert.equal(upload.headers.authorization, 'Bearer test-user-token')

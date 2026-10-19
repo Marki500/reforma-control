@@ -1,6 +1,6 @@
 const today = new Date()
 const dateKey = offset => { const date = new Date(today); date.setDate(date.getDate() + offset); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
-const project = { project_id: 'demo', workspace_owner_id: 'demo-user', project_name: 'Reforma de ejemplo', name: 'Reforma de ejemplo', role: 'owner', setup_completed: true, is_active: true }
+const project = { project_id: 'demo', workspace_owner_id: 'demo-user', project_name: 'Reforma de ejemplo', name: 'Reforma de ejemplo', role: 'owner', estimated_budget: 5000, setup_completed: true, is_active: true }
 const materials = [
   { id: 'm1', name: 'Grifo de lavabo monomando caño alto en acabado latón cepillado', price: 249, quantity: 2, category_id: 'bath', status: 'Mirando', priority: 'Media', store_name: 'tienda.example', product_url: 'https://tienda.example/grifo', material_categories: { name: 'Baño' }, rooms: { name: 'Baño principal' } },
   { id: 'm2', name: 'Ventana de PVC con apertura oscilobatiente y doble acristalamiento 150 × 120 cm', price: 391.47, quantity: 4, category_id: 'windows', status: 'Comprado', priority: 'Alta', store_name: 'Ventanas Ejemplo', product_url: 'https://ventanas.example/producto', material_categories: { name: 'Ventanas' } },
@@ -50,15 +50,15 @@ export const supabase = {
     async remove() { return {} },
   } } },
   from(table) {
-    let single = false
+    let single = false, from = 0, to = Infinity
     const chain = {
-      select() { return chain }, order() { return chain }, eq() { return chain }, limit() { return chain },
+      range(start, end) { from = start; to = end; return chain }, select() { return chain }, order() { return chain }, eq() { return chain }, limit() { return chain },
       maybeSingle() { single = true; return chain }, single() { single = true; return chain },
       then(resolve, reject) {
         attempts[table] = (attempts[table] || 0) + 1
         const params = new URLSearchParams(location.search)
         const error = (params.has('error') && ['materials', 'expenses'].includes(table)) || (params.has('errorOnce') && table === 'materials' && attempts[table] === 1)
-        return Promise.resolve(error ? { error: new Error('No se pudo conectar. Vuelve a intentarlo.') } : { data: single ? (tables[table]?.[0] || null) : (tables[table] || []) }).then(resolve, reject)
+        return Promise.resolve(error ? { error: new Error('No se pudo conectar. Vuelve a intentarlo.') } : { data: single ? (tables[table]?.[0] || null) : (tables[table] || []).slice(from, to + 1) }).then(resolve, reject)
       },
     }
     return chain

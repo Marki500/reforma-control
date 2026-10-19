@@ -1,5 +1,14 @@
 # Corrección de almacenamiento
 
+## Revisión de documentos e informes — 19 de octubre de 2026
+
+Reconstruir y desplegar la aplicación. No hay migraciones nuevas. La revisión
+de presupuestos y facturas muestra original y formulario juntos, con visor PDF
+propio y avisos de datos ausentes o descuadres. En Ajustes se añaden las descargas
+de gastos en Excel y del informe de reforma en PDF. Consultar
+`REVISION_E_INFORMES.md` para alcance, cálculos y comprobaciones. Se ha validado
+localmente con datos ficticios; no se ha desplegado desde esta revisión.
+
 ## Lectura visual de PDF — 19 de octubre de 2026
 
 Reconstruir y desplegar servidor y frontend. No requiere una migración nueva.

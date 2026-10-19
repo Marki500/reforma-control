@@ -67,3 +67,5 @@ button:active { transform: translateY(1px); }
   .safe-area-main { padding-bottom: max(2.5rem, env(safe-area-inset-bottom)); }
   .budget-visual-grid { grid-template-columns: repeat(var(--budget-columns, 3), minmax(0, 1fr)); }
 }
+
+[data-document-review] [aria-invalid="true"] { border-color: #d2a14b; background-color: #fffbeb; }

@@ -10,6 +10,7 @@ import { Modal } from '../components/ui/Modal'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import DataTools from '../components/settings/DataTools'
+import ReportTools from '../components/settings/ReportTools'
 import SharingSettings from '../components/settings/SharingSettings'
 import AccountSettings from '../components/settings/AccountSettings'
 import ProjectManagement from '../components/settings/ProjectManagement'
@@ -177,6 +178,7 @@ export default function Settings() {
       {error && <div role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{error} <button type="button" onClick={loadData} className="font-medium underline">Reintentar</button></div>}
 
       <AccountSettings />
+      <ReportTools />
 
       <ProjectManagement />
 

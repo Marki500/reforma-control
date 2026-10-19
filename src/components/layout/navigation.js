@@ -5,6 +5,7 @@ export const navigationLinks = [
   { to: '/planos', label: 'Planos', icon: 'plans' },
   { to: '/notas', label: 'Notas', icon: 'notes' },
   { to: '/presupuestos', label: 'Presupuestos', icon: 'budgets' },
+  { to: '/facturas', label: 'Facturas', icon: 'invoices' },
   { to: '/gastos', label: 'Gastos', icon: 'expenses' },
   { to: '/proveedores', label: 'Proveedores', icon: 'suppliers' },
   { to: '/tareas', label: 'Tareas', icon: 'tasks' },
@@ -19,6 +20,6 @@ export const mobilePrimaryLinks = navigationLinks.filter(({ to }) =>
 
 export const navigationGroups = [
   { label: 'Planificación', paths: ['/vivienda', '/planos', '/notas', '/inspiracion'] },
-  { label: 'Compras y costes', paths: ['/materials', '/presupuestos', '/gastos', '/proveedores'] },
+  { label: 'Compras y costes', paths: ['/materials', '/presupuestos', '/facturas', '/gastos', '/proveedores'] },
   { label: 'Ejecución', paths: ['/tareas', '/calendario', '/progreso'] },
 ].map(group => ({ ...group, links: group.paths.map(path => navigationLinks.find(link => link.to === path)) }))

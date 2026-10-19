@@ -17,14 +17,38 @@ const tables = {
   dashboard_grid_config: [{ num_columns: 2, num_rows: 1 }],
   dashboard_grid_cells: [{ row_index: 0, col_index: 0, category_id: 'bath', budget_amount: 1800, material_categories: { name: 'Baño' } }, { row_index: 0, col_index: 1, category_id: 'windows', budget_amount: 2000, material_categories: { name: 'Ventanas' } }],
 }
+const demoInvoice = { id: 'sample-invoice', name: 'Instalación eléctrica del baño', supplier_name: 'Instalaciones Norte', invoice_number: 'FN-26-014', issued_date: '2026-10-15', total_amount: 121, supplier_tax_id: 'B87654321', file_type: 'application/pdf', file_path: 'demo/sample.pdf', expense_id: 'e2', expenses: { id: 'e2', amount: 121, paid_amount: 121 } }
+tables.invoices = [demoInvoice]
+tables.expenses.push({ id: 'e2', title: demoInvoice.name, amount: 121, paid_amount: 121, category: 'Mano de obra', invoices: [{ id: demoInvoice.id, invoice_number: demoInvoice.invoice_number }], notes: '', vendor: demoInvoice.supplier_name })
+tables.budget_pdfs = [{ id: 'quote1', name: 'Carpintería de ventanas', status: 'Aceptado', expense_id: 'e1' }]
+const files = new Map()
 const attempts = {}
 export const supabase = {
   auth: {
     getUser: async () => ({ data: { user: { id: 'demo-user' } } }),
-    getSession: async () => ({ data: { session: { user: { id: 'demo-user', email: 'demo@example.com' } } } }),
+    getSession: async () => ({ data: { session: { access_token: 'preview-only-token', user: { id: 'demo-user', email: 'demo@example.com' } } } }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
   },
-  rpc: async name => ({ data: name === 'get_workspace_context' || name === 'get_project_details' ? [project] : name === 'list_user_projects_v2' ? [project] : [] }),
+  async rpc(name, params) {
+    if (name === 'register_invoice') {
+      const item = params.p_invoice
+      const existing = tables.invoices.find(row => row.id === item.id)
+      if (existing) return { data: existing.expense_id }
+      const expenseId = params.p_expense_id || `expense-${item.id}`
+      const expense = tables.expenses.find(row => row.id === expenseId) || { id: expenseId }
+      Object.assign(expense, { title: item.name, vendor: item.supplier_name, category: item.category, amount: Number(item.total_amount), paid_amount: Number(item.paid_amount), due_date: item.due_date, notes: item.notes, invoices: [{ id: item.id, invoice_number: item.invoice_number }] })
+      if (!tables.expenses.includes(expense)) tables.expenses.push(expense)
+      tables.invoices.unshift({ ...item, expense_id: expenseId, expenses: expense })
+      return { data: expenseId }
+    }
+    if (name === 'delete_invoice') { tables.invoices = tables.invoices.filter(item => item.id !== params.p_invoice_id); return {} }
+    return { data: name === 'get_workspace_context' || name === 'get_project_details' ? [project] : name === 'list_user_projects_v2' ? [project] : [] }
+  },
+  storage: { from() { return {
+    async upload(path, file) { files.set(path, URL.createObjectURL(file)); return {} },
+    async createSignedUrl(path) { return { data: { signedUrl: files.get(path) || '/nivel-mark.svg' } } },
+    async remove() { return {} },
+  } } },
   from(table) {
     let single = false
     const chain = {

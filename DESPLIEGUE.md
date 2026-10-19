@@ -1,5 +1,14 @@
 # Corrección de almacenamiento
 
+## Facturas — 19 de octubre de 2026
+
+Aplicar `supabase/migrations/00030_invoices.sql` después de 00029 y desplegar tanto
+servidor como frontend. Crea el bucket privado de facturas, permisos, registro
+atómico en Gastos y protección de importes vinculados. Consultar `FACTURAS.md`
+para el flujo, límites y pruebas. La versión del servidor pasa a `invoices-v1`,
+con `features.ai_invoice_async: 1`. Esta migración no se ha aplicado al VPS desde
+esta revisión.
+
 ## Mejoras del resumen y borrado seguro — 19 de octubre de 2026
 
 Antes de publicar esta versión, ejecutar una vez la migración completa
@@ -71,7 +80,7 @@ La corrección final del botón de edición elimina completamente el envío HTML
 
 Después de `00025`, ejecuta una vez `supabase/migrations/00026_ai_usage_limits.sql` y después despliega la aplicación. La migración crea contadores diarios persistentes y atómicos: 5 usos por usuario y 40 para toda la aplicación, reiniciados según la fecha de Europe/Madrid. Si Supabase no permite comprobar o reservar un uso, NIVEL no llama a OpenRouter.
 
-Para usar Groq gratuitamente configura `AI_PROVIDER=groq`, `GROQ_API_KEY`, `GROQ_MODEL=qwen/qwen3.8-27b` y `AI_FREE_ONLY=true`. Conserva `OPENROUTER_API_KEY`, `OPENROUTER_MODEL=openrouter/free` y `OPENROUTER_PDF_ENGINE=pdf-text` para el respaldo gratuito de PDFs escaneados, demasiado largos para los 8K tokens/minuto de Groq Free o con fallos temporales. El servidor extrae primero el texto localmente y el respaldo no consume un segundo uso interno. Tras el deploy, `/api/health` debe mostrar `release: ai-groq-provider-v1`, `ai_budget_async: 6`, `provider: groq`, `configured: true` y `free_only: true`.
+Para usar Groq gratuitamente configura `AI_PROVIDER=groq`, `GROQ_API_KEY`, `GROQ_MODEL=qwen/qwen3.8-27b` y `AI_FREE_ONLY=true`. Conserva `OPENROUTER_API_KEY`, `OPENROUTER_MODEL=openrouter/free` y `OPENROUTER_PDF_ENGINE=pdf-text` para el respaldo gratuito de PDFs escaneados, demasiado largos para los 8K tokens/minuto de Groq Free o con fallos temporales. El servidor extrae primero el texto localmente y el respaldo no consume un segundo uso interno. Tras el deploy, `/api/health` debe mostrar `release: invoices-v1`, `ai_budget_async: 6`, `provider: groq`, `configured: true` y `free_only: true`.
 
 Si el contador devuelve `AI_USAGE_UNAVAILABLE` después de haber aplicado `00026`, ejecuta `supabase/migrations/00027_fix_ai_usage_counter.sql`. Corrige una ambigüedad de PostgreSQL en `usage_date`, conserva los contadores existentes y recarga el esquema de PostgREST.
 

@@ -8,6 +8,7 @@ const FloorPlan = lazy(() => import('./pages/FloorPlan'))
 const Notes = lazy(() => import('./pages/Notes'))
 const Inspirations = lazy(() => import('./pages/Inspirations'))
 const BudgetPDFs = lazy(() => import('./pages/BudgetPDFs'))
+const Invoices = lazy(() => import('./pages/Invoices'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Tasks = lazy(() => import('./pages/Tasks'))
 const Expenses = lazy(() => import('./pages/Expenses'))
@@ -88,6 +89,7 @@ export default function App() {
         <Route path="notas" element={<Notes />} />
         <Route path="inspiracion" element={<Inspirations />} />
         <Route path="presupuestos" element={<BudgetPDFs />} />
+        <Route path="facturas" element={<Invoices />} />
         <Route path="settings" element={<Settings />} />
         <Route path="tareas" element={<Tasks />} />
         <Route path="gastos" element={<Expenses />} />

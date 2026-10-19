@@ -89,7 +89,7 @@ function analysisError(message, { transient = false } = {}) {
 async function pollBudgetAnalysis(job) {
   let response
   try {
-    response = await fetch(`/api/analyze-budget/${encodeURIComponent(job.job_id)}`, {
+    response = await fetch(`/api/${job.documentKind === 'invoice' ? 'analyze-invoice' : 'analyze-budget'}/${encodeURIComponent(job.job_id)}`, {
       cache: 'no-store',
       headers: {
         'x-request-id': job.request_id,
@@ -116,7 +116,7 @@ async function pollBudgetAnalysis(job) {
   return result
 }
 
-export async function analyzeBudgetPDF(file) {
+export async function analyzeBudgetPDF(file, { kind = 'budget' } = {}) {
   let health
   try {
     const response = await fetch('/api/health', { cache: 'no-store' })
@@ -124,6 +124,7 @@ export async function analyzeBudgetPDF(file) {
   } catch {
     throw new Error('Fase: comprobación del servidor · No se pudo consultar la versión desplegada.')
   }
+  if (kind === 'invoice' && health?.features?.ai_invoice_async !== 1) throw new Error('El servidor todavía no tiene habilitado el análisis de facturas. Puedes rellenar los datos manualmente.')
   if (health?.features?.ai_budget_async !== 6) {
     throw new Error(`Fase: comprobación del servidor · Coolify está sirviendo una versión anterior (${health?.release || 'sin versión'}). Haz un redeploy sin caché.`)
   }
@@ -131,10 +132,11 @@ export async function analyzeBudgetPDF(file) {
   formData.append('file', file)
   let job
   try {
-    job = await authenticatedRequest('/api/analyze-budget', formData)
+    job = await authenticatedRequest(kind === 'invoice' ? '/api/analyze-invoice' : '/api/analyze-budget', formData)
   } catch (error) {
-    throw new Error(`Fase: envío del PDF · ${error.message}`)
+    throw new Error(`Fase: envío del documento · ${error.message}`)
   }
+  job.documentKind = kind
   if (!job.job_id || !job.poll_token) throw new Error(`El servidor no inició el análisis. Diagnóstico: ${job.request_id || 'sin identificador'}`)
   const analysisDeadline = Date.now() + 5 * 60 * 1000
   let transientFailureStartedAt = null
@@ -153,7 +155,7 @@ export async function analyzeBudgetPDF(file) {
         throw new Error(`Fase: consulta del resultado · El servidor lleva más de un minuto sin responder. El análisis puede seguir ejecutándose. ${error.message}`)
       }
       if (error.message) {
-        throw new Error(`Fase: procesamiento del PDF · ${error.message}`)
+        throw new Error(`Fase: procesamiento del documento · ${error.message}`)
       }
       if (Date.now() < analysisDeadline) {
         continue

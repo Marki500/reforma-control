@@ -13,7 +13,7 @@ function payloadFrom(form) {
 }
 
 export async function getExpenses() {
-  const { data, error } = await supabase.from('expenses').select('*, rooms(name), suppliers(name)').order('expense_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
+  const { data, error } = await supabase.from('expenses').select('*, rooms(name), suppliers(name), invoices(id, invoice_number)').order('expense_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
   if (error) throw error
   return data || []
 }
@@ -25,7 +25,7 @@ export async function saveExpense(id, form) {
   else {
     query = supabase.from('expenses').insert({ ...payload, project_id: await getCurrentProjectId() })
   }
-  const { data, error } = await query.select('*, rooms(name), suppliers(name)').single()
+  const { data, error } = await query.select('*, rooms(name), suppliers(name), invoices(id, invoice_number)').single()
   if (error) throw error
   return data
 }

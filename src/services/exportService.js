@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient'
 
-const tables = ['home_info', 'home_documents', 'materials', 'material_categories', 'rooms', 'tasks', 'task_items', 'suppliers', 'budget_pdfs', 'expenses', 'notes', 'floor_plans', 'progress_photos', 'inspirations', 'category_budgets', 'dashboard_grid_config', 'dashboard_grid_cells']
+const tables = ['home_info', 'home_documents', 'materials', 'material_categories', 'rooms', 'tasks', 'task_items', 'suppliers', 'budget_pdfs', 'invoices', 'expenses', 'notes', 'floor_plans', 'progress_photos', 'inspirations', 'category_budgets', 'dashboard_grid_config', 'dashboard_grid_cells']
 
 function download(name, contents, type) {
   const url = URL.createObjectURL(new Blob([contents], { type }))

@@ -6,6 +6,7 @@ const drawings = {
   notes: <><path d="M6 4h12v16H6z" /><path d="M9 8h6M9 12h6M9 16h4" /></>,
   budgets: <><path d="M5 5h14v14H5z" /><path d="M8 9h8M8 13h5M15.5 16.5h.01" /></>,
   expenses: <><path d="M4 8h16v11H4z" /><path d="M4 11h16M8 15h3" /></>,
+  invoices: <><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 7h6M9 11h6M9 15h3" /></>,
   suppliers: <><path d="M4 20v-9l8-5 8 5v9" /><path d="M8 20v-6h8v6M9 9.5h6" /></>,
   tasks: <><path d="M9 6h11M9 12h11M9 18h11" /><path d="m3.5 6 1.3 1.3L7 4.8M3.5 12l1.3 1.3L7 10.8M3.5 18l1.3 1.3L7 16.8" /></>,
   calendar: <><path d="M5 7h14v13H5zM8 4v6M16 4v6M5 11h14" /><path d="M9 15h.01M13 15h.01M17 15h.01" /></>,

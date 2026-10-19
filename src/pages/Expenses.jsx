@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { expenseInvoice } from '../utils/invoices'
 import { Plus, Pencil, Trash2, Receipt, WalletCards } from 'lucide-react'
 import { getRooms } from '../services/materialsService'
 import { deleteExpense, getExpenses, saveExpense } from '../services/expensesService'
@@ -15,6 +17,7 @@ const empty = { title: '', category: 'Material', vendor: '', supplier_id: '', bu
 const fieldClass = 'mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm'
 
 export default function Expenses() {
+  const [searchParams] = useSearchParams()
   const [expenses, setExpenses] = useState([])
   const [rooms, setRooms] = useState([])
   const [suppliers, setSuppliers] = useState([])
@@ -39,7 +42,8 @@ export default function Expenses() {
   useEffect(() => { load() }, [])
 
   const totals = useMemo(() => expenseTotals(expenses), [expenses])
-  const filtered = filterExpenses(expenses, filters)
+  const filtered = filterExpenses(expenses, filters).filter(item => !searchParams.get('expense') || item.id === searchParams.get('expense'))
+  const editingInvoice = expenseInvoice(expenses.find(item => item.id === editing) || {})
   const pending = recordedExpensesSummary(expenses).pending
   const change = (key, value) => setForm(previous => ({ ...previous, [key]: value }))
 
@@ -93,6 +97,7 @@ export default function Expenses() {
         ].map(([label, value]) => <div key={label} className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-xs text-stone-500">{label}</p><p className="mt-1 text-xl font-bold text-stone-800">{formatCurrency(value)}</p></div>)}
       </div>
 
+      {searchParams.get('expense') && <Link to="/gastos" className="inline-block text-sm text-olive underline">Ver todos los gastos</Link>}
       <div className="grid gap-3 rounded-2xl bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
         <input aria-label="Buscar gastos" placeholder="Buscar concepto o proveedor…" className={fieldClass} value={filters.search} onChange={event => setFilters(prev => ({ ...prev, search: event.target.value }))} />
         <select aria-label="Filtrar por estado" className={fieldClass} value={filters.status} onChange={event => setFilters(prev => ({ ...prev, status: event.target.value }))}><option value="">Todos los estados</option>{statuses.map(value => <option key={value}>{value}</option>)}</select>
@@ -113,16 +118,18 @@ export default function Expenses() {
               <div className="flex flex-wrap items-center gap-2"><h2 className="break-words font-semibold text-stone-800">{expense.title}</h2><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${status === 'Pagado' ? 'bg-green-100 text-green-700' : status === 'Parcial' ? 'bg-amber-100 text-amber-700' : 'bg-stone-100 text-stone-600'}`}>{status}</span></div>
               <p className="mt-1 text-lg font-bold text-stone-800">{formatCurrency(amount)} <span className="text-xs font-normal text-stone-500">· pagado {formatCurrency(paid)}</span></p>
               <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-500"><span>{expense.category}</span>{(expense.suppliers?.name || expense.vendor) && <span>{expense.suppliers?.name || expense.vendor}</span>}{expense.rooms?.name && <span>{expense.rooms.name}</span>}{expense.expense_date && <span>{new Date(`${expense.expense_date}T12:00:00`).toLocaleDateString('es-ES')}</span>}{expense.due_date && status !== 'Pagado' && <span>Vence {new Date(`${expense.due_date}T12:00:00`).toLocaleDateString('es-ES')}</span>}</div>
+              {expenseInvoice(expense) && <Link to={`/facturas?invoice=${expenseInvoice(expense).id}`} className="mt-3 inline-block text-sm font-medium text-olive underline">Ver factura {expenseInvoice(expense).invoice_number}</Link>}
               {expense.notes && <p className="mt-2 whitespace-pre-wrap break-words text-sm text-stone-500">{expense.notes}</p>}
             </div>
             <button aria-label={`Editar ${expense.title}`} className="rounded-lg p-2 text-stone-500" disabled={busy} onClick={() => edit(expense)}><Pencil size={18} /></button>
-            <button aria-label={`Eliminar ${expense.title}`} className="rounded-lg p-2 text-stone-500" disabled={busy} onClick={() => setDeleting(expense)}><Trash2 size={18} /></button>
+            <button aria-label={`Eliminar ${expense.title}`} className="rounded-lg p-2 text-stone-500" disabled={busy || Boolean(expenseInvoice(expense))} title={expenseInvoice(expense) ? 'Retira la factura vinculada antes de eliminar el gasto' : undefined} onClick={() => setDeleting(expense)}><Trash2 size={18} /></button>
           </div>
         </article>
       })}</div>}
 
       <Modal open={open} onClose={() => !busy && setOpen(false)} title={editing ? 'Editar gasto' : 'Nuevo gasto'}>
         <form onSubmit={submit} className="space-y-4">
+          {editingInvoice && <p className="rounded-xl bg-olive-light p-3 text-sm text-stone-700">Vinculado a la factura {editingInvoice.invoice_number}. Puedes registrar pagos; para corregir el importe, retira primero la factura.</p>}
           {formError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{formError}</p>}
           <label className="block text-sm">Concepto<input className={fieldClass} value={form.title} required maxLength={200} onChange={event => change('title', event.target.value)} /></label>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -130,7 +137,7 @@ export default function Expenses() {
             <label className="block text-sm">Proveedor guardado<select className={fieldClass} value={form.supplier_id} onChange={event => { const id = event.target.value; const supplier = suppliers.find(item => item.id === id); setForm(previous => ({ ...previous, supplier_id: id, vendor: supplier?.name || previous.vendor })) }}><option value="">Sin proveedor asociado</option>{suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
             <label className="block text-sm">Nombre en factura<input className={fieldClass} value={form.vendor} maxLength={200} onChange={event => change('vendor', event.target.value)} /></label>
             <label className="block text-sm">Importe previsto<input type="number" min="0" step="0.01" className={fieldClass} value={form.budgeted_amount} onChange={event => change('budgeted_amount', event.target.value)} /></label>
-            <label className="block text-sm">Coste final<input type="number" min="0" step="0.01" className={fieldClass} value={form.amount} onChange={event => change('amount', event.target.value)} /></label>
+            <label className="block text-sm">Coste final<input type="number" min="0" step="0.01" className={fieldClass} disabled={Boolean(editingInvoice)} value={form.amount} onChange={event => change('amount', event.target.value)} /></label>
             <label className="block text-sm">Cantidad pagada<input type="number" min="0" step="0.01" className={fieldClass} value={form.paid_amount} onChange={event => change('paid_amount', event.target.value)} /></label>
             <label className="block text-sm">Estancia<select className={fieldClass} value={form.room_id} onChange={event => change('room_id', event.target.value)}><option value="">Sin estancia</option>{rooms.map(room => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label>
             <label className="block text-sm">Fecha del gasto<input type="date" className={fieldClass} value={form.expense_date} onChange={event => change('expense_date', event.target.value)} /></label>

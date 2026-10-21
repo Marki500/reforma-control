@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { DocumentReview, ReviewChecks } from '../components/budget/DocumentReview'
 import { documentReviewIssues } from '../utils/documentReview'
+import BudgetSupplierEditor from '../components/budget/BudgetSupplierEditor'
+import { budgetSupplierDraft, emptyBudgetSupplier, matchingBudgetSuppliers, validateBudgetSupplier } from '../utils/budgetSupplier'
+import { getCurrentProjectId } from '../services/workspaceService'
 import { analysisProblem } from '../utils/documentAnalysis'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -20,6 +23,8 @@ import {
 import {
   getBudgetPDFs,
   createBudgetPDF,
+  createBudgetWithSupplier,
+  discardPendingBudget,
   deleteBudgetPDF,
   uploadPDF,
   updateBudgetPDF,
@@ -57,6 +62,9 @@ export default function BudgetPDFs() {
   const [uploadForm, setUploadForm] = useState({ file: null, ...emptyMetadata })
   const [analysisState, setAnalysisState] = useState('idle')
   const [reviewed, setReviewed] = useState(false)
+  const [newSupplier, setNewSupplier] = useState({ ...emptyBudgetSupplier })
+  const [createSupplier, setCreateSupplier] = useState(false)
+  const [pendingBudget, setPendingBudget] = useState(null)
   const [analysisResult, setAnalysisResult] = useState(null)
   const [analysisError, setAnalysisError] = useState('')
   const [aiUsage, setAiUsage] = useState(null)
@@ -77,7 +85,7 @@ export default function BudgetPDFs() {
       ])
       setPdfs(pdfsData)
       setCategories(cats)
-      setSuppliers(supplierList.filter(item => item.status !== 'Archivado'))
+      setSuppliers(supplierList)
       setAiUsage(usageResult.data || null)
       setAiUsageError(usageResult.error?.message || '')
     } catch (err) {
@@ -96,17 +104,20 @@ export default function BudgetPDFs() {
   }
 
   function chooseFile(file) {
-    if (uploading || analysisState === 'analyzing') return
+    if (uploading || pendingBudget || analysisState === 'analyzing') return
     if (!file || file.type !== 'application/pdf') return
     if (file.size > 20 * 1024 * 1024) { setAnalysisError('Selecciona un PDF de hasta 20 MB.'); return }
     setUploadForm({ file, ...emptyMetadata, name: file.name.replace(/\.pdf$/i, '') })
     setReviewed(false)
+    setNewSupplier({ ...emptyBudgetSupplier }); setCreateSupplier(false)
     setAnalysisState('idle')
     setAnalysisResult(null)
     setAnalysisError('')
   }
 
   function openUpload() {
+    if (pendingBudget) { setUploadOpen(true); return }
+    setNewSupplier({ ...emptyBudgetSupplier }); setCreateSupplier(false)
     setReviewed(false)
     setUploadForm({ file: null, ...emptyMetadata })
     setAnalysisState('idle')
@@ -139,7 +150,10 @@ export default function BudgetPDFs() {
         return
       }
       setAnalysisResult({ ...draft, model: result.model, reading_mode: result.reading_mode })
-      const supplier = suppliers.find(item => normalizeName(item.name) === normalizeName(draft.supplier_name))
+      const supplierDraft = budgetSupplierDraft(draft)
+      const matches = matchingBudgetSuppliers(suppliers, supplierDraft)
+      const supplier = matches.length === 1 ? matches[0] : null
+      setNewSupplier(supplierDraft); setCreateSupplier(false); setReviewed(false)
       const category = categories.find(item => {
         const categoryName = normalizeName(item.name)
         const suggestion = normalizeName(draft.suggested_category)
@@ -148,7 +162,7 @@ export default function BudgetPDFs() {
       setUploadForm(previous => ({
         ...previous,
         name: draft.document_title || previous.name,
-        supplier_id: supplier?.id || previous.supplier_id,
+        supplier_id: supplier?.id || '',
         category_id: category?.id || previous.category_id,
         notes: draft.notes || '',
         total_amount: draft.total_amount ?? '',
@@ -167,15 +181,23 @@ export default function BudgetPDFs() {
 
   async function handleUpload(event) {
     event.preventDefault()
-    if (!reviewed) { setAnalysisError('Confirma que has revisado el documento y sus importes.'); return }
+    if (uploading) return
+    const creating = createSupplier || Boolean(pendingBudget)
+    if (!pendingBudget && createSupplier) {
+      const issue = validateBudgetSupplier(newSupplier)
+      if (issue) { setAnalysisError(issue); return }
+      if (matchingBudgetSuppliers(suppliers, newSupplier).length > 1) { setAnalysisError('Elige uno de los proveedores coincidentes antes de guardar.'); return }
+    }
+    if (!reviewed && !pendingBudget) { setAnalysisError('Confirma que has revisado el documento y sus importes.'); return }
     if (!uploadForm.file) { setOperationError('Selecciona un archivo PDF.'); return }
     if (!['ready', 'manual'].includes(analysisState)) { setAnalysisError('Analiza el PDF o elige rellenarlo manualmente antes de guardarlo.'); return }
     setOperationError('')
     setUploading(true)
     let result
     try {
-      result = await uploadPDF(uploadForm.file)
-      await createBudgetPDF({
+      const projectId = creating ? (pendingBudget?.projectId || await getCurrentProjectId()) : null
+      result = pendingBudget ? { url: pendingBudget.budget.file_url, size: pendingBudget.budget.file_size } : await uploadPDF(uploadForm.file)
+      const budget = pendingBudget?.budget || {
         name: uploadForm.name.trim() || uploadForm.file.name.replace(/\.pdf$/i, ''),
         file_url: result.url,
         file_size: result.size,
@@ -192,16 +214,35 @@ export default function BudgetPDFs() {
         line_items: analysisState === 'ready' ? analysisResult?.line_items || [] : [],
         ai_extracted: analysisState === 'ready',
         ai_model: analysisState === 'ready' ? analysisResult?.model || '' : '',
-      })
+      }
+      if (creating) {
+        const stage = pendingBudget || { budget: { ...budget, id: crypto.randomUUID() }, supplier: Object.fromEntries(Object.entries(newSupplier).map(([key, value]) => [key, value.trim()])), projectId }
+        setPendingBudget(stage)
+        await createBudgetWithSupplier(stage)
+        setPendingBudget(null); setCreateSupplier(false)
+      } else await createBudgetPDF(budget)
       await load()
       setUploadOpen(false)
     } catch (err) {
-      if (result?.url) await removeStoredFile('budget-pdfs', result.url).catch(() => {})
+      if (!creating && result?.url) await removeStoredFile('budget-pdfs', result.url).catch(() => {})
+      setAnalysisError(err.message || 'No se pudo guardar el presupuesto.')
       setOperationError(err.message || 'No se pudo completar la operación.')
       console.error(err)
     } finally {
       setUploading(false)
     }
+  }
+
+  async function resolvePendingBudget() {
+    if (uploading || !pendingBudget) return
+    setUploading(true); setAnalysisError('')
+    try {
+      const result = await discardPendingBudget(pendingBudget)
+      setPendingBudget(null); setOperationError('')
+      if (result.saved) { setUploadOpen(false); await load() }
+      else setAnalysisError('El borrador pendiente se ha descartado. Puedes corregir los datos y guardar de nuevo.')
+    } catch (err) { setAnalysisError(err.message || 'No se pudo comprobar el presupuesto. Reintenta cuando vuelva la conexión.') }
+    finally { setUploading(false) }
   }
 
   async function handleDelete(pdf) {
@@ -307,7 +348,7 @@ export default function BudgetPDFs() {
           <label className="block text-xs font-medium text-stone-500 sm:max-w-sm">Proveedor
             <select value={filterSupplier} onChange={event => setFilterSupplier(event.target.value)} className="mt-1 min-h-[42px] w-full rounded-xl border border-stone-200 bg-stone-50 px-3 text-sm text-stone-700">
               <option value="">Todos los proveedores</option>
-              {suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.trade}</option>)}
+              {suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.trade}{supplier.status === 'Archivado' ? ' · Archivado' : ''}</option>)}
             </select>
           </label>
           <label className="block text-xs font-medium text-stone-500 sm:max-w-sm">Estado
@@ -410,7 +451,8 @@ export default function BudgetPDFs() {
       <Modal open={uploadOpen} onClose={() => !uploading && analysisState !== 'analyzing' && setUploadOpen(false)} title="Revisar y guardar presupuesto" wide={Boolean(uploadForm.file)}>
         <DocumentReview file={uploadForm.file}>
           <form data-document-review onSubmit={handleUpload} onChange={event => { if (event.target.type !== 'checkbox') setReviewed(false) }} className="space-y-4">
-          <fieldset disabled={uploading || analysisState === 'analyzing'}>
+          {pendingBudget && <div className="space-y-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><p>El archivo está conservado mientras confirmamos el guardado. Reintenta sin cambiar los datos para evitar duplicados, o comprueba el resultado antes de descartar.</p><div className="flex flex-wrap gap-2"><Button type="button" disabled={uploading} onClick={handleUpload}>Reintentar guardado</Button><Button type="button" variant="secondary" disabled={uploading} onClick={resolvePendingBudget}>Comprobar y descartar borrador</Button></div>{analysisError && <p role="alert">{analysisError}</p>}</div>}
+          <fieldset disabled={uploading || Boolean(pendingBudget) || analysisState === 'analyzing'}>
             <div
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
@@ -472,7 +514,8 @@ export default function BudgetPDFs() {
                 <ReviewChecks values={uploadForm} kind="budget" />
                 <div className="grid gap-3 sm:grid-cols-2">{[['quote_number', 'N.º presupuesto'], ['subtotal', 'Base imponible (€)'], ['tax_rate', 'IVA (%)'], ['tax_amount', 'IVA total (€)']].map(([key, label]) => <label key={key} className="block text-sm">{label}<input type={key === 'quote_number' ? 'text' : 'number'} min="0" step="0.01" value={uploadForm[key]} onChange={event => setUploadForm(previous => ({ ...previous, [key]: event.target.value }))} aria-invalid={documentReviewIssues(uploadForm).some(issue => issue.field === key)} className={`mt-1 min-h-11 w-full rounded-xl border px-3 py-2 text-sm ${documentReviewIssues(uploadForm).some(issue => issue.field === key) ? 'border-amber-400 bg-amber-50/40' : 'border-stone-300'}`} /></label>)}</div>
                 <label className="block text-sm">Nombre<input aria-invalid={documentReviewIssues(uploadForm).some(issue => issue.field === 'name')} value={uploadForm.name} onChange={event => setUploadForm(previous => ({ ...previous, name: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" placeholder="Ej. Presupuesto instalación eléctrica" /></label>
-                <label className="block text-sm">Proveedor<select value={uploadForm.supplier_id} onChange={event => setUploadForm(previous => ({ ...previous, supplier_id: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"><option value="">Sin proveedor vinculado</option>{suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.trade}</option>)}</select>{analysisState === 'ready' && analysisResult?.supplier_name && !uploadForm.supplier_id && <span className="mt-1 block text-xs text-amber-700">“{analysisResult.supplier_name}” no coincide con un proveedor guardado. Puedes vincularlo después.</span>}</label>
+                <label className="block text-sm">Proveedor<select aria-label="Proveedor guardado del presupuesto" value={uploadForm.supplier_id} onChange={event => { setUploadForm(previous => ({ ...previous, supplier_id: event.target.value })); setCreateSupplier(false); setReviewed(false) }} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"><option value="">Sin proveedor vinculado</option>{suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.trade}{supplier.status === 'Archivado' ? ' · Archivado' : ''}</option>)}</select></label>
+                <BudgetSupplierEditor suppliers={suppliers} draft={newSupplier} enabled={createSupplier} selectedId={uploadForm.supplier_id} onChange={(key, value) => { setNewSupplier(previous => ({ ...previous, [key]: value })); setReviewed(false) }} onEnabled={value => { setCreateSupplier(value); setReviewed(false) }} onSelect={supplier_id => { setUploadForm(previous => ({ ...previous, supplier_id })); setCreateSupplier(false); setReviewed(false) }} />
                 <label className="block text-sm">Categoría<select value={uploadForm.category_id} onChange={event => setUploadForm(previous => ({ ...previous, category_id: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"><option value="">Sin categoría</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
                 <label className="block text-sm">Notas<textarea rows={2} value={uploadForm.notes} onChange={event => setUploadForm(previous => ({ ...previous, notes: event.target.value }))} className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" /></label>
                 <div className="grid gap-3 sm:grid-cols-2"><label className="block text-sm">Importe total<input type="number" min="0" step="0.01" aria-invalid={documentReviewIssues(uploadForm).some(issue => issue.field === 'total_amount')} value={uploadForm.total_amount} onChange={event => setUploadForm(previous => ({ ...previous, total_amount: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label><label className="block text-sm">Estado<select value={uploadForm.status} onChange={event => setUploadForm(previous => ({ ...previous, status: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm">{budgetStatuses.map(status => <option key={status}>{status}</option>)}</select></label><label className="block text-sm">Fecha de emisión<input type="date" aria-invalid={documentReviewIssues(uploadForm).some(issue => issue.field === 'issued_date')} value={uploadForm.issued_date} onChange={event => setUploadForm(previous => ({ ...previous, issued_date: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label><label className="block text-sm">Válido hasta<input type="date" value={uploadForm.valid_until} onChange={event => setUploadForm(previous => ({ ...previous, valid_until: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label></div>
@@ -490,7 +533,7 @@ export default function BudgetPDFs() {
       <Modal open={Boolean(editingPdf)} onClose={() => !uploading && setEditingPdf(null)} title="Editar presupuesto">
         <form onSubmit={saveMetadata} className="space-y-4">
           <label className="block text-sm">Nombre<input required value={editForm.name} onChange={event => setEditForm(previous => ({ ...previous, name: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" /></label>
-          <label className="block text-sm">Proveedor<select value={editForm.supplier_id} onChange={event => setEditForm(previous => ({ ...previous, supplier_id: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"><option value="">Sin proveedor vinculado</option>{suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.trade}</option>)}</select></label>
+          <label className="block text-sm">Proveedor<select value={editForm.supplier_id} onChange={event => setEditForm(previous => ({ ...previous, supplier_id: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"><option value="">Sin proveedor vinculado</option>{suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.trade}{supplier.status === 'Archivado' ? ' · Archivado' : ''}</option>)}</select></label>
           <label className="block text-sm">Categoría<select value={editForm.category_id} onChange={event => setEditForm(previous => ({ ...previous, category_id: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"><option value="">Sin categoría</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
           <label className="block text-sm">Notas<textarea rows={3} value={editForm.notes} onChange={event => setEditForm(previous => ({ ...previous, notes: event.target.value }))} className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" /></label>
           <div className="grid gap-3 sm:grid-cols-2"><label className="block text-sm">Importe total<input type="number" min="0" step="0.01" value={editForm.total_amount} onChange={event => setEditForm(previous => ({ ...previous, total_amount: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label><label className="block text-sm">Estado<select value={editForm.status} onChange={event => setEditForm(previous => ({ ...previous, status: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm">{budgetStatuses.map(status => <option key={status}>{status}</option>)}</select></label><label className="block text-sm">Fecha de emisión<input type="date" value={editForm.issued_date} onChange={event => setEditForm(previous => ({ ...previous, issued_date: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label><label className="block text-sm">Válido hasta<input type="date" value={editForm.valid_until} onChange={event => setEditForm(previous => ({ ...previous, valid_until: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label></div><label className="block text-sm">Forma de pago<input value={editForm.payment_terms} onChange={event => setEditForm(previous => ({ ...previous, payment_terms: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label><label className="block text-sm">Garantía<input value={editForm.warranty} onChange={event => setEditForm(previous => ({ ...previous, warranty: event.target.value }))} className="mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 px-3 text-sm" /></label>

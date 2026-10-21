@@ -1,5 +1,34 @@
 # Corrección de almacenamiento
 
+## Proveedor desde presupuesto — 21 de octubre de 2026
+
+Aplicar una vez `supabase/migrations/00031_budget_supplier_creation.sql`, después
+de las migraciones anteriores, y reconstruir/desplegar servidor y frontend.
+Añade NIF/CIF a proveedores y una función transaccional para crear o reutilizar
+el proveedor y vincularlo al nuevo presupuesto. No modifica proveedores ya
+existentes ni rellena datos fiscales desde facturas anteriores. La opción de alta
+es voluntaria en la revisión del presupuesto; los datos detectados son editables.
+
+La coincidencia prioriza NIF/CIF y después nombre normalizado. Las coincidencias
+ambiguas exigen elegir una ficha; los archivados también cuentan para no crear
+duplicados. La ficha reutilizada no cambia de estado ni de datos. Una ficha nueva
+queda como Candidato, Por contactar y especialidad Otro.
+
+Si se pierde la respuesta, el archivo se conserva y el borrador permite reintentar
+con el mismo identificador. «Comprobar y descartar borrador» comprueba antes si
+el presupuesto ya existe; si está guardado, conserva el archivo y cierra el flujo.
+Si no está guardado, registra su cancelación y después elimina el archivo pendiente,
+permitiendo corregir los datos. El bloqueo y la cancelación impiden que una petición
+antigua termine guardándose después de descartar el PDF.
+El borrador de reintento vive en la ventana actual; no recargar durante un fallo.
+
+Sin 00031, no funciona la nueva alta ni el guardado del NIF/CIF en Proveedores.
+No utilizar `npm run migrate`, que no incluye estas migraciones recientes.
+Pruebas: `node --test tests/*.test.mjs`, `npm run build` y, con `PGLITE_MODULE`
+configurado, `node tests/budget-supplier-db.mjs`. La prueba de navegador
+`tests/budget-supplier-ui.mjs` usa la vista ficticia y las mismas variables que
+`tests/review-report-ui.mjs`. No se ha aplicado la migración ni desplegado al VPS.
+
 ## Revisión de documentos e informes — 19 de octubre de 2026
 
 Reconstruir y desplegar la aplicación. No hay migraciones nuevas. La revisión

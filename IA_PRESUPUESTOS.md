@@ -3,6 +3,11 @@
 La aplicación analiza documentos en segundo plano y presenta un borrador editable.
 Solo se guardan los datos tras la revisión del usuario. Las claves permanecen en el servidor.
 
+En presupuestos también se extraen los datos visibles del emisor: nombre, NIF/CIF,
+teléfono, correo y dirección. No se completan campos ausentes ni se utilizan datos
+del cliente. La revisión permite optar por crear el proveedor al guardar, o vincular
+una ficha existente. Requiere la migración 00031; consultar `DESPLIEGUE.md`.
+
 ## Lectura de PDF
 
 El servidor extrae el texto de cada página con `pdf-parse`. No envía al modelo los

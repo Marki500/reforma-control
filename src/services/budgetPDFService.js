@@ -44,6 +44,26 @@ export async function createBudgetPDF(pdf) {
   return normalizeStorageRecord(data)
 }
 
+export async function createBudgetWithSupplier(stage) {
+  const { data, error } = await supabase.rpc('create_budget_with_supplier', { p_budget: stage.budget, p_supplier: stage.supplier, p_project: stage.projectId })
+  if (error) {
+    if (error.code === 'PGRST202' || error.code === '42883') throw new Error('Falta aplicar la migración 00031 para crear proveedores desde presupuestos.')
+    throw error
+  }
+  if (!data?.id || !data?.supplier_id) throw new Error('No se pudo confirmar el guardado. Reintenta con el mismo borrador.')
+  return data
+}
+
+// A lost response may hide a committed transaction: check before removing its PDF.
+export async function discardPendingBudget(stage) {
+  const { data, error } = await supabase.rpc('resolve_budget_supplier_upload', { p_id: stage.budget.id, p_project: stage.projectId })
+  if (error) throw error
+  if (data?.saved === true) return { saved: true }
+  if (data?.saved !== false) throw new Error('No se pudo comprobar el guardado. No se ha eliminado el archivo.')
+  await removeStoredFile('budget-pdfs', stage.budget.file_url)
+  return { saved: false }
+}
+
 export async function deleteBudgetPDF(pdf) {
   await removeStoredFile('budget-pdfs', pdf.file_url)
   const { error } = await supabase

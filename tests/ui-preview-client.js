@@ -30,6 +30,16 @@ export const supabase = {
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
   },
   async rpc(name, params) {
+    if (name === 'resolve_budget_supplier_upload') return { data: { saved: tables.budget_pdfs.some(item => item.id === params.p_id) } }
+    if (name === 'create_budget_with_supplier') {
+      const existing = tables.budget_pdfs.find(item => item.id === params.p_budget.id)
+      if (existing) return { data: { id: existing.id, supplier_id: existing.supplier_id } }
+      const supplier = { id: `supplier-${params.p_budget.id}`, ...params.p_supplier, status: 'Candidato', contacted: false, trade: 'Otro' }
+      tables.suppliers ||= []; tables.suppliers.push(supplier)
+      tables.budget_pdfs.push({ ...params.p_budget, supplier_id: supplier.id, suppliers: supplier })
+      if (new URLSearchParams(location.search).has('lostResponse')) return { error: { message: 'Respuesta perdida de prueba' } }
+      return { data: { id: params.p_budget.id, supplier_id: supplier.id, supplier_created: true } }
+    }
     if (name === 'register_invoice') {
       const item = params.p_invoice
       const existing = tables.invoices.find(row => row.id === item.id)
@@ -50,15 +60,15 @@ export const supabase = {
     async remove() { return {} },
   } } },
   from(table) {
-    let single = false, from = 0, to = Infinity
+    let single = false, from = 0, to = Infinity, filterId = null
     const chain = {
-      range(start, end) { from = start; to = end; return chain }, select() { return chain }, order() { return chain }, eq() { return chain }, limit() { return chain },
+      range(start, end) { from = start; to = end; return chain }, select() { return chain }, order() { return chain }, eq(key, value) { if (key === 'id') filterId = value; return chain }, limit() { return chain },
       maybeSingle() { single = true; return chain }, single() { single = true; return chain },
       then(resolve, reject) {
         attempts[table] = (attempts[table] || 0) + 1
         const params = new URLSearchParams(location.search)
         const error = (params.has('error') && ['materials', 'expenses'].includes(table)) || (params.has('errorOnce') && table === 'materials' && attempts[table] === 1)
-        return Promise.resolve(error ? { error: new Error('No se pudo conectar. Vuelve a intentarlo.') } : { data: single ? (tables[table]?.[0] || null) : (tables[table] || []).slice(from, to + 1) }).then(resolve, reject)
+        return Promise.resolve(error ? { error: new Error('No se pudo conectar. Vuelve a intentarlo.') } : { data: single ? (filterId ? tables[table]?.find(row => row.id === filterId) || null : tables[table]?.[0] || null) : (tables[table] || []).slice(from, to + 1) }).then(resolve, reject)
       },
     }
     return chain

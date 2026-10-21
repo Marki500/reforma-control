@@ -34,6 +34,7 @@ try {
   await db.exec(await readFile(new URL('../supabase/migrations/00015_suppliers.sql', import.meta.url), 'utf8'))
   await db.exec('ALTER TABLE expenses ADD COLUMN project_id UUID REFERENCES projects ON DELETE CASCADE; ALTER TABLE suppliers ADD COLUMN project_id UUID REFERENCES projects ON DELETE CASCADE;')
   await db.exec(await readFile(new URL('../supabase/migrations/00030_invoices.sql', import.meta.url), 'utf8'))
+  await db.exec(await readFile(new URL('../supabase/migrations/00032_expense_payment_phases.sql', import.meta.url), 'utf8'))
   const first = draft(1); await store(first)
   const expense = await register(first)
   assert.equal(await count('invoices'), 1); assert.equal(await count('expenses'), 1)
@@ -86,6 +87,22 @@ try {
   await db.query('SELECT delete_invoice($1)', [first.id])
   assert.equal(await count('expenses'), 3, 'removing a document preserves its expense and payments')
   assert.equal(await count('invoices'), 1)
+  const phases = [{ id: id(91), title: 'Anticipo', amount: 40, paid: true, paid_date: null }, { id: id(92), title: 'Liquidación', amount: 81, paid: false, due_date: '2026-11-01' }]
+  const version = (await db.query('SELECT payment_plan_version FROM expenses WHERE id=$1', [target])).rows[0].payment_plan_version
+  await db.query('UPDATE expenses SET payment_phases=$1::jsonb,payment_plan_version=$2 WHERE id=$3', [JSON.stringify(phases), version, target])
+  const phased = (await db.query('SELECT paid_amount,due_date,payment_plan_version FROM expenses WHERE id=$1', [target])).rows[0]
+  assert.equal(phased.paid_amount, '40.00')
+  assert.equal(new Date(phased.due_date).toISOString().slice(0, 10), '2026-11-01')
+  await assert.rejects(db.query('UPDATE expenses SET paid_amount=50 WHERE id=$1', [target]), /fases/)
+  await assert.rejects(db.query('UPDATE expenses SET amount=200 WHERE id=$1', [target]), /fases|factura/)
+  const done = phases.map(phase => ({ ...phase, paid: true, paid_date: '2026-01-01' }))
+  await db.query('UPDATE expenses SET payment_phases=$1::jsonb,payment_plan_version=$2 WHERE id=$3', [JSON.stringify(done), phased.payment_plan_version, target])
+  const complete = (await db.query('SELECT paid_amount,due_date FROM expenses WHERE id=$1', [target])).rows[0]
+  assert.equal(complete.paid_amount, '121.00'); assert.equal(complete.due_date, null)
+  await assert.rejects(db.query('UPDATE expenses SET payment_phases=$1::jsonb,payment_plan_version=$2 WHERE id=$3', [JSON.stringify(phases), phased.payment_plan_version, target]), /pagos han cambiado/)
+  await assert.rejects(db.query('UPDATE expenses SET payment_phases=$1::jsonb WHERE id=$2', [JSON.stringify([{ ...done[0], amount: 0 }]), target]), /positivo/)
+  await assert.rejects(db.query('UPDATE expenses SET payment_phases=$1::jsonb WHERE id=$2', [JSON.stringify(done.map(phase => ({ ...phase, paid_date: '2999-01-01' }))), target]), /fecha/)
+  assert.equal((await db.query('SELECT paid_amount FROM expenses WHERE id=$1', [target])).rows[0].paid_amount, '121.00')
   await db.query('DELETE FROM projects WHERE id=$1', [project])
   assert.equal(await count('invoices'), 0, 'project deletion cascades safely through invoice and expense')
   assert.ok((await db.query('SELECT * FROM project_file_cleanup WHERE object_name=$1', [linked.file_path])).rows.length)

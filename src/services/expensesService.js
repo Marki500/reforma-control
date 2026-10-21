@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient'
 import { getCurrentProjectId } from './workspaceService'
+import { phasesOf, phasePaid, phaseDue } from '../utils/paymentPhases'
 
 function payloadFrom(form) {
   return {
@@ -9,6 +10,8 @@ function payloadFrom(form) {
     expense_date: form.expense_date || null, due_date: form.due_date || null,
     room_id: form.room_id || null, supplier_id: form.supplier_id || null,
     notes: form.notes.trim(), updated_at: new Date().toISOString(),
+    payment_phases: phasesOf(form).map(phase => ({ ...phase, title: phase.title.trim(), amount: Number(phase.amount) })),
+    payment_plan_version: form.payment_plan_version ?? 0,
   }
 }
 
@@ -20,12 +23,21 @@ export async function getExpenses() {
 
 export async function saveExpense(id, form) {
   const payload = payloadFrom(form)
+  if (payload.payment_phases.length) {
+    payload.paid_amount = phasePaid(payload.payment_phases)
+    payload.due_date = phaseDue(payload.payment_phases) || null
+  }
   let query
   if (id) query = supabase.from('expenses').update(payload).eq('id', id)
   else {
     query = supabase.from('expenses').insert({ ...payload, project_id: await getCurrentProjectId() })
   }
   const { data, error } = await query.select('*, rooms(name), suppliers(name), invoices(id, invoice_number)').single()
+  if (error?.code === '40001') {
+    const conflict = new Error('Los pagos han cambiado. Cierra y vuelve a abrir el gasto para revisar los datos actualizados.')
+    conflict.code = '40001'; throw conflict
+  }
+  if (['PGRST204', '42703'].includes(error?.code)) throw new Error('Comprueba que se ha aplicado la migración 00032 de pagos por fases antes de guardar.')
   if (error) throw error
   return data
 }

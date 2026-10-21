@@ -1,4 +1,4 @@
-import { expenseStatus } from './expenses.js'
+import { pendingPayments } from './paymentPhases.js'
 
 function addDays(dateKey, days) {
   const date = new Date(`${dateKey}T12:00:00`)
@@ -20,9 +20,10 @@ export function buildNotifications(tasks, expenses, today, horizonDays = 7) {
     items.push({ id: `task:${task.id}:${task.due_date}`, sourceId: task.id, type: 'task', date: task.due_date, title: task.title, route: '/tareas', ...timing(task.due_date, today) })
   }
   for (const expense of expenses) {
-    if (!expense.due_date || expenseStatus(expense) === 'Pagado' || expense.due_date > limit) continue
-    const amount = Math.max((Number(expense.amount) || 0) - (Number(expense.paid_amount) || 0), 0)
-    items.push({ id: `payment:${expense.id}:${expense.due_date}`, sourceId: expense.id, type: 'payment', date: expense.due_date, title: expense.title, amount, route: '/gastos', ...timing(expense.due_date, today) })
+    for (const payment of pendingPayments(expense)) {
+      if (payment.date > limit) continue
+      items.push({ id: `payment:${expense.id}:${payment.id || payment.date}`, sourceId: expense.id, type: 'payment', date: payment.date, title: payment.title, amount: payment.amount, route: '/gastos', ...timing(payment.date, today) })
+    }
   }
   const rank = { overdue: 0, today: 1, soon: 2 }
   return items.sort((a, b) => rank[a.level] - rank[b.level] || a.date.localeCompare(b.date) || a.title.localeCompare(b.title, 'es'))

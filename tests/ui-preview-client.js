@@ -21,6 +21,12 @@ const demoInvoice = { id: 'sample-invoice', name: 'Instalación eléctrica del b
 tables.invoices = [demoInvoice]
 tables.expenses.push({ id: 'e2', title: demoInvoice.name, amount: 121, paid_amount: 121, category: 'Mano de obra', invoices: [{ id: demoInvoice.id, invoice_number: demoInvoice.invoice_number }], notes: '', vendor: demoInvoice.supplier_name })
 tables.budget_pdfs = [{ id: 'quote1', name: 'Carpintería de ventanas', status: 'Aceptado', expense_id: 'e1' }]
+tables.expenses[0].payment_phases = [
+  { id: 'phase-1', title: 'Anticipo', amount: 600, paid: true, paid_date: '2026-10-01', due_date: null },
+  { id: 'phase-2', title: 'Durante la obra', amount: 1000, paid: false, paid_date: null, due_date: dateKey(3) },
+  { id: 'phase-3', title: 'Liquidación', amount: 800, paid: false, paid_date: null, due_date: dateKey(30) },
+]
+tables.expenses[0].payment_plan_version = 0
 const files = new Map()
 const attempts = {}
 export const supabase = {
@@ -60,11 +66,12 @@ export const supabase = {
     async remove() { return {} },
   } } },
   from(table) {
-    let single = false, from = 0, to = Infinity, filterId = null
+    let single = false, from = 0, to = Infinity, filterId = null, patch = null
     const chain = {
-      range(start, end) { from = start; to = end; return chain }, select() { return chain }, order() { return chain }, eq(key, value) { if (key === 'id') filterId = value; return chain }, limit() { return chain },
+      update(value) { patch = value; return chain }, range(start, end) { from = start; to = end; return chain }, select() { return chain }, order() { return chain }, eq(key, value) { if (key === 'id') filterId = value; return chain }, limit() { return chain },
       maybeSingle() { single = true; return chain }, single() { single = true; return chain },
       then(resolve, reject) {
+        if (patch) { const target = tables[table]?.find(row => row.id === filterId); if (target) Object.assign(target, patch, { payment_plan_version: (target.payment_plan_version || 0) + 1 }) }
         attempts[table] = (attempts[table] || 0) + 1
         const params = new URLSearchParams(location.search)
         const error = (params.has('error') && ['materials', 'expenses'].includes(table)) || (params.has('errorOnce') && table === 'materials' && attempts[table] === 1)

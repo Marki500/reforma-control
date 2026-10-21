@@ -10,6 +10,11 @@ Se extraen emisor, NIF/CIF, número, fecha, vencimiento, moneda, base, IVA, tota
 concepto, notas y partidas. La IA no registra pagos. El formulario también permite
 rellenar todo manualmente cuando la extracción no está disponible.
 
+Si el gasto de destino tiene un plan de pagos por fases (migración 00032), sus pagos
+y vencimientos se gestionan en Gastos. Al vincularlo, el total de la factura debe
+coincidir con el coste del gasto y se conserva su pagado acumulado. Ajustar antes
+el plan en Gastos si cambia el coste; no se redistribuyen fases automáticamente.
+
 Al vincular un gasto existente —incluidos los de presupuestos aceptados— se actualiza
 su importe final sin crear otro gasto. Se carga el pagado acumulado existente y se
 comprueba en base de datos que ningún otro usuario lo haya modificado mientras tanto.

@@ -1,5 +1,41 @@
 # Corrección de almacenamiento
 
+## Pagos por fases — 21 de octubre de 2026
+
+Aplicar una vez `supabase/migrations/00032_expense_payment_phases.sql` y después
+reconstruir y desplegar la aplicación. No requiere variables ni servicios nuevos.
+La migración conserva los importes existentes y añade el plan de fases y su versión
+a cada gasto. No distribuye ni fecha automáticamente los pagos históricos.
+No utilizar `npm run migrate`, que no incluye estas migraciones recientes.
+
+En Gastos > Gestionar pagos, «Dividir el gasto en fases» propone Anticipo,
+Durante la obra y Liquidación (30/40/30, editable). Si ya hay dinero pagado, lo
+conserva como «Pagos anteriores», sin inventar una fecha, y deja el resto pendiente.
+El vencimiento anterior se conserva en la fase final pendiente. Se pueden añadir,
+eliminar, renombrar y reordenar fases, modificar importes y vencimientos y marcar
+pagos realizados con su fecha. Guardar el gasto confirma los cambios; las fases
+deben sumar exactamente el coste final. Máximo 50 fases por gasto.
+
+Cada gasto muestra una barra proporcional al importe pagado, las fases completadas
+y la primera fase pendiente en el orden del plan. El agregado pagado y el próximo
+vencimiento se calculan en base de datos. Calendario y avisos muestran cada fase
+pendiente con su propio importe. Los totales e informes usan el agregado, sin sumar
+las fases de nuevo. Los pagos anteriores sin fecha se identifican como tales.
+
+Con un plan activo, el pagado acumulado no se cambia directamente desde Facturas
+ni otros clientes: se gestionan las fases en Gastos. Una factura vinculada sigue
+protegiendo el coste final. Al vincular una factura a un gasto con fases, el total
+debe coincidir; si cambia, ajustar primero el coste y las fases del gasto.
+El control de versión impide sobrescribir pagos modificados por otro editor; el
+formulario conserva los cambios locales y pide cerrar y reabrir con datos actuales.
+
+Validación: `node --test tests/*.test.mjs`, `npm run build` y, con `PGLITE_MODULE`
+configurado, `node tests/invoices-db.mjs` (incluye la migración 00032, sumas,
+pagos de facturas, reintentos, versión y protección de importes). La prueba opcional
+`node tests/payment-phases-ui.mjs` usa el servidor ficticio y las variables
+`PLAYWRIGHT_MODULE` y `UI_OUTPUT` documentadas en `REVISION_E_INFORMES.md`.
+No se ha aplicado la migración ni desplegado al VPS desde esta revisión.
+
 ## Proveedor desde presupuesto — 21 de octubre de 2026
 
 Aplicar una vez `supabase/migrations/00031_budget_supplier_creation.sql`, después

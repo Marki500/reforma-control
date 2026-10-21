@@ -1,4 +1,4 @@
-import { expenseStatus } from './expenses.js'
+import { pendingPayments } from './paymentPhases.js'
 
 export function monthDays(year, month) {
   const first = new Date(year, month, 1, 12)
@@ -22,11 +22,9 @@ export function calendarEvents(tasks, expenses) {
     events.push({ id: `task-${task.id}`, sourceId: task.id, date: task.due_date, type: 'task', title: task.title, completed: task.status === 'Completada', meta: task.priority })
   }
   for (const expense of expenses) {
-    if (!expense.due_date || expenseStatus(expense) === 'Pagado') continue
-    events.push({
-      id: `expense-${expense.id}`, sourceId: expense.id, date: expense.due_date, type: 'payment',
-      title: expense.title, amount: Math.max((Number(expense.amount) || 0) - (Number(expense.paid_amount) || 0), 0),
-      completed: false, meta: expense.suppliers?.name || expense.vendor || '',
+    for (const payment of pendingPayments(expense)) events.push({
+      id: `expense-${expense.id}${payment.id ? `-${payment.id}` : ''}`, sourceId: expense.id, date: payment.date, type: 'payment',
+      title: payment.title, amount: payment.amount, completed: false, meta: expense.suppliers?.name || expense.vendor || '',
     })
   }
   return events.sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title, 'es'))

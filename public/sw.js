@@ -1,5 +1,16 @@
-const CACHE_NAME = 'nivel-shell-v5'
+const CACHE_NAME = 'nivel-shell-v6'
 const APP_SHELL = ['/', '/login', '/manifest.webmanifest', '/nivel-mark.svg', '/icons/icon-192.png', '/icons/icon-512.png']
+
+function cacheResponse(event, key, response) {
+  if (!response.ok) return
+  // Clone before returning the original response to the browser.
+  const copy = response.clone()
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.put(key, copy))
+      .catch(error => console.warn('No se pudo actualizar la caché:', error))
+  )
+}
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()))
@@ -22,7 +33,7 @@ self.addEventListener('fetch', event => {
     event.respondWith(
       fetch(request)
         .then(response => {
-          if (response.ok) caches.open(CACHE_NAME).then(cache => cache.put('/', response.clone()))
+          cacheResponse(event, '/', response)
           return response
         })
         .catch(() => caches.match('/'))
@@ -33,7 +44,7 @@ self.addEventListener('fetch', event => {
   if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/') || ['/nivel-mark.svg', '/manifest.webmanifest'].includes(url.pathname)) {
     event.respondWith(
       caches.match(request).then(cached => cached || fetch(request).then(response => {
-        if (response.ok) caches.open(CACHE_NAME).then(cache => cache.put(request, response.clone()))
+        cacheResponse(event, request, response)
         return response
       }))
     )

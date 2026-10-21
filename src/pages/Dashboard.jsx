@@ -31,6 +31,7 @@ import {
   LayoutGrid,
   Settings2,
   Upload,
+  FileText,
 } from 'lucide-react'
 
 export default function Dashboard() {

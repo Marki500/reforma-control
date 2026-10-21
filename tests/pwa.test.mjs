@@ -1,6 +1,51 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
+import { runInNewContext } from 'node:vm'
+
+for (const mode of ['navigate', 'cors']) {
+  for (const cacheFails of [false, true]) {
+    test(`service worker serves ${mode} responses while cache is delayed${cacheFails ? ' and fails' : ''}`, async () => {
+      const worker = await readFile(new URL('../public/sw.js', import.meta.url), 'utf8')
+      const handlers = {}
+      const pending = []
+      const warnings = []
+      let result
+      let releaseCache
+      let storedBody
+      const cacheReady = new Promise(resolve => { releaseCache = resolve })
+      runInNewContext(worker, {
+        URL,
+        self: {
+          location: { origin: 'https://nivel.test' },
+          addEventListener: (type, handler) => { handlers[type] = handler },
+        },
+        fetch: async () => new Response('network body'),
+        caches: {
+          match: async () => undefined,
+          open: async () => {
+            await cacheReady
+            if (cacheFails) throw new Error('Cache unavailable')
+            return { put: async (key, response) => { storedBody = await response.text() } }
+          },
+        },
+        console: { warn: (...args) => warnings.push(args) },
+      })
+      handlers.fetch({
+        request: { method: 'GET', url: 'https://nivel.test/assets/app.js', mode },
+        respondWith: promise => { result = promise },
+        waitUntil: promise => pending.push(promise),
+      })
+      // Consume the browser's response before caches.open resolves, reproducing the race.
+      assert.equal(await (await result).text(), 'network body')
+      assert.equal(pending.length, 1)
+      releaseCache()
+      await Promise.all(pending)
+      assert.equal(storedBody, cacheFails ? undefined : 'network body')
+      assert.equal(warnings.length, cacheFails ? 1 : 0)
+    })
+  }
+}
 
 test('PWA manifest exposes installable NIVEL icons', async () => {
   const manifest = JSON.parse(await readFile(new URL('../public/manifest.webmanifest', import.meta.url), 'utf8'))

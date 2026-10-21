@@ -31,7 +31,7 @@ export default defineConfig({
           else if (request.url.includes('/preview-job')) payload = { status: 'complete', draft, model: 'Simulación local' }
           if (payload) { _response.setHeader('Content-Type', 'application/json'); _response.end(JSON.stringify(payload)); return }
         }
-        if (/^\/(dashboard|materials|facturas|gastos|presupuestos|informes)(\?|$)/.test(request.url)) request.url = `/tests/ui-preview.html${request.url.includes('?') ? request.url.slice(request.url.indexOf('?')) : ''}`
+        if (/^\/(dashboard|materials|facturas|gastos|presupuestos|informes|planos)(\?|$)/.test(request.url)) request.url = `/tests/ui-preview.html${request.url.includes('?') ? request.url.slice(request.url.indexOf('?')) : ''}`
         next()
       })
     },

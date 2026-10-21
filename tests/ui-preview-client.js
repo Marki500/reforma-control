@@ -1,6 +1,6 @@
 const today = new Date()
 const dateKey = offset => { const date = new Date(today); date.setDate(date.getDate() + offset); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
-const project = { project_id: 'demo', workspace_owner_id: 'demo-user', project_name: 'Reforma de ejemplo', name: 'Reforma de ejemplo', role: 'owner', estimated_budget: 5000, setup_completed: true, is_active: true }
+const project = { project_id: 'demo', workspace_owner_id: 'demo-user', project_name: 'Reforma de ejemplo', name: 'Reforma de ejemplo', role: new URLSearchParams(location.search).get('role') === 'viewer' ? 'viewer' : 'owner', estimated_budget: 5000, setup_completed: true, is_active: true }
 const materials = [
   { id: 'm1', name: 'Grifo de lavabo monomando caño alto en acabado latón cepillado', price: 249, quantity: 2, category_id: 'bath', status: 'Mirando', priority: 'Media', store_name: 'tienda.example', product_url: 'https://tienda.example/grifo', material_categories: { name: 'Baño' }, rooms: { name: 'Baño principal' } },
   { id: 'm2', name: 'Ventana de PVC con apertura oscilobatiente y doble acristalamiento 150 × 120 cm', price: 391.47, quantity: 4, category_id: 'windows', status: 'Comprado', priority: 'Alta', store_name: 'Ventanas Ejemplo', product_url: 'https://ventanas.example/producto', material_categories: { name: 'Ventanas' } },
@@ -28,6 +28,7 @@ tables.expenses[0].payment_phases = [
 ]
 tables.expenses[0].payment_plan_version = 0
 const files = new Map()
+try { tables.floor_plans = JSON.parse(sessionStorage.getItem('nivel-preview-floorplans')) || [] } catch { tables.floor_plans = [] }
 const attempts = {}
 export const supabase = {
   auth: {
@@ -66,11 +67,25 @@ export const supabase = {
     async remove() { return {} },
   } } },
   from(table) {
-    let single = false, from = 0, to = Infinity, filterId = null, patch = null
+    let single = false, from = 0, to = Infinity, filterId = null, patch = null, inserted = null, removed = false, expectedUpdatedAt
     const chain = {
-      update(value) { patch = value; return chain }, range(start, end) { from = start; to = end; return chain }, select() { return chain }, order() { return chain }, eq(key, value) { if (key === 'id') filterId = value; return chain }, limit() { return chain },
+      insert(value) { inserted = value; return chain }, delete() { removed = true; return chain },
+      update(value) { patch = value; return chain }, range(start, end) { from = start; to = end; return chain }, select() { return chain }, order() { return chain }, eq(key, value) { if (key === 'id') filterId = value; if (key === 'updated_at') expectedUpdatedAt = value; return chain }, limit() { return chain },
       maybeSingle() { single = true; return chain }, single() { single = true; return chain },
       then(resolve, reject) {
+        if (table === 'floor_plans') {
+          const params = new URLSearchParams(location.search)
+          if (params.has('saveError') && (patch || inserted)) return Promise.resolve({ error: { message: 'Error de guardado simulado. Reintenta o exporta el plano.' } }).then(resolve, reject)
+          if (inserted) tables.floor_plans.push({ ...inserted, created_at: new Date().toISOString() })
+          if (removed) tables.floor_plans = tables.floor_plans.filter(row => row.id !== filterId)
+          if (patch) {
+            const target = tables.floor_plans.find(row => row.id === filterId)
+            if (target && (expectedUpdatedAt === undefined || expectedUpdatedAt === target.updated_at)) Object.assign(target, patch)
+            else return Promise.resolve({ data: null }).then(resolve, reject)
+          }
+          sessionStorage.setItem('nivel-preview-floorplans', JSON.stringify(tables.floor_plans))
+          return Promise.resolve({ data: single ? tables.floor_plans.find(row => row.id === (inserted?.id || filterId)) || null : tables.floor_plans }).then(resolve, reject)
+        }
         if (patch) { const target = tables[table]?.find(row => row.id === filterId); if (target) Object.assign(target, patch, { payment_plan_version: (target.payment_plan_version || 0) + 1 }) }
         attempts[table] = (attempts[table] || 0) + 1
         const params = new URLSearchParams(location.search)

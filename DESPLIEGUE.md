@@ -237,3 +237,8 @@ Tras el redeploy, comprueba un proveedor marcado como contactado, otro pendiente
 Ejecuta únicamente `supabase/migrations/00016_progress_photos.sql` en Supabase Studio > SQL Editor. La migración crea el diario fotográfico y sus políticas por usuario; reutiliza el bucket `images` que ya existe, por lo que no crea otro almacenamiento.
 
 Tras el redeploy, añade una imagen ficticia, edita su fase y estancia, comprueba los filtros y elimínala. Al eliminarla desde Progreso también se elimina el objeto correspondiente del bucket `images`.
+
+
+## Activar el editor de planos 2D
+
+Ejecuta una vez supabase/migrations/00033_interactive_floor_plans.sql en Supabase Studio > SQL Editor antes del redeploy. Añade plan_data a floor_plans y conserva los planos e imágenes existentes y los permisos por proyecto. El script antiguo npm run migrate no incluye esta migración. Consulta PLANOS_2D.md para uso, pruebas y límites de la primera versión.

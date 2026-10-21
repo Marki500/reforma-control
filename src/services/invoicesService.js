@@ -10,7 +10,7 @@ export async function getInvoices() {
   return data || []
 }
 
-export function analyzeInvoice(file) { return analyzeBudgetPDF(file, { kind: 'invoice' }) }
+export function analyzeInvoice(file, options = {}) { return analyzeBudgetPDF(file, { ...options, kind: 'invoice' }) }
 
 export async function uploadInvoice(file, invoiceId, onPrepared = () => {}) {
   if (!invoiceMimeTypes.includes(file.type) || file.size > 20 * 1024 * 1024) throw new Error('Selecciona un PDF, JPG, PNG o WebP de hasta 20 MB.')

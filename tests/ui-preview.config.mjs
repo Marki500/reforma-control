@@ -7,6 +7,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), {
     name: 'fixture-routes',
     configureServer(server) {
+      const progressJobs = new Map()
       server.middlewares.use((request, _response, next) => {
         if (request.url === '/fixture.pdf') { _response.setHeader('Content-Type', 'application/pdf'); _response.end(pdfFixture()); return }
         if (request.url === '/api/upload-pdf') { request.resume(); _response.setHeader('Content-Type', 'application/json'); _response.end(JSON.stringify({ url: 'http://127.0.0.1:4175/storage/v1/object/public/budget-pdfs/demo/example.pdf', size: 100 })); return }
@@ -15,7 +16,18 @@ export default defineConfig({
           let payload
           if (request.url === '/api/health') payload = { features: { ai_budget_async: 6, ai_invoice_async: 1 } }
           else if (request.url === '/api/ai-usage') payload = { allowed: true, user_used: 1, user_limit: 10, global_used: 3, global_limit: 40 }
-          else if (['/api/analyze-invoice', '/api/analyze-budget'].includes(request.url)) payload = { job_id: 'preview-job', poll_token: 'preview-only', request_id: 'preview' }
+          else if (['/api/analyze-invoice', '/api/analyze-budget'].includes(request.url)) {
+            const previewProgress = request.headers.referer?.includes('progressPreview=1')
+            const jobId = previewProgress ? `progress-job-${Date.now()}` : 'preview-job'
+            if (previewProgress) progressJobs.set(jobId, Date.now())
+            payload = { job_id: jobId, poll_token: 'preview-only', request_id: 'preview' }
+          }
+          else if (request.url.includes('/progress-job-')) {
+            const elapsed = Date.now() - progressJobs.get(request.url.split('/').pop())
+            payload = elapsed < 20000
+              ? { status: 'processing', progress: elapsed < 4000 ? { stage: 'preparing' } : elapsed < 8000 ? { stage: 'rendering', page: 2, page_count: 3 } : { stage: 'analyzing' } }
+              : { status: 'complete', draft, model: 'Simulación local' }
+          }
           else if (request.url.includes('/preview-job')) payload = { status: 'complete', draft, model: 'Simulación local' }
           if (payload) { _response.setHeader('Content-Type', 'application/json'); _response.end(JSON.stringify(payload)); return }
         }

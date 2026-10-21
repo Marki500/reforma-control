@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import AnalysisProgress from '../components/budget/AnalysisProgress'
 import { DocumentReview, ReviewChecks } from '../components/budget/DocumentReview'
 import { documentReviewIssues } from '../utils/documentReview'
 import BudgetSupplierEditor from '../components/budget/BudgetSupplierEditor'
@@ -61,6 +62,7 @@ export default function BudgetPDFs() {
   const [filterStatus, setFilterStatus] = useState('')
   const [uploadForm, setUploadForm] = useState({ file: null, ...emptyMetadata })
   const [analysisState, setAnalysisState] = useState('idle')
+  const [analysisProgress, setAnalysisProgress] = useState(null)
   const [reviewed, setReviewed] = useState(false)
   const [newSupplier, setNewSupplier] = useState({ ...emptyBudgetSupplier })
   const [createSupplier, setCreateSupplier] = useState(false)
@@ -137,10 +139,11 @@ export default function BudgetPDFs() {
       return
     }
     setAnalysisState('analyzing')
+    setAnalysisProgress({ stage: 'checking' })
     setAnalysisResult(null)
     setAnalysisError('')
     try {
-      const result = await analyzeBudgetPDF(uploadForm.file)
+      const result = await analyzeBudgetPDF(uploadForm.file, { onProgress: setAnalysisProgress })
       const draft = result.draft
       const problem = analysisProblem(draft, 'budget')
       if (problem) {
@@ -493,7 +496,7 @@ export default function BudgetPDFs() {
                   <button type="button" onClick={() => { setAnalysisState('manual'); setAnalysisError('') }} className="min-h-[40px] w-full text-xs font-medium text-stone-500 hover:text-stone-800">Rellenar manualmente</button>
                 </div>
               )}
-              {analysisState === 'analyzing' && <div className="flex min-h-[90px] flex-col items-center justify-center gap-2 rounded-xl bg-stone-50 text-sm text-stone-600"><span className="h-5 w-5 animate-spin rounded-full border-2 border-stone-300 border-t-terracotta" /><span>Leyendo texto, tablas e importes; si está escaneado, se analiza visualmente…</span></div>}
+              {analysisState === 'analyzing' && <AnalysisProgress progress={analysisProgress} />}
 
               {analysisState === 'ready' && analysisResult && (
                 <div className="space-y-3 rounded-xl border border-green-200 bg-green-50/70 p-3">

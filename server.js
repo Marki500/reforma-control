@@ -592,6 +592,7 @@ function getGenerateContentText(payload) {
 }
 
 async function requestBudgetAnalysisWithModel(source, model, file) {
+  file.onAnalysisProgress?.({ stage: 'analyzing', reading_mode: source.mode })
   const { prompt, schema, sanitize } = documentAnalysisSpec(file)
   const parts = source.parts.map(part => {
     if (part.type === 'text') return { text: part.text }
@@ -656,6 +657,7 @@ async function requestOpenRouterBudgetAnalysis(file, { forceVision = false } = {
 }
 
 async function requestOpenRouterDocument(file, source) {
+  file.onAnalysisProgress?.({ stage: 'analyzing', reading_mode: source.mode })
   const { prompt, schema, sanitize } = documentAnalysisSpec(file)
   const response = await fetch(`${openRouterApiBaseUrl}/chat/completions`, {
     method: 'POST',
@@ -723,6 +725,7 @@ async function extractPdfText(file) {
 async function requestGroqBudgetAnalysis(file) {
   const { prompt, schema, sanitize } = documentAnalysisSpec(file)
   const documentText = await extractPdfText(file)
+  file.onAnalysisProgress?.({ stage: 'analyzing', reading_mode: 'text' })
   const response = await fetch(`${groqApiBaseUrl}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqApiKey}` },
@@ -804,9 +807,14 @@ function classifyAIError(error) {
 
 async function runBudgetAnalysisJob(jobId, file, diagnostic) {
   const startedAt = Date.now()
+  file.onAnalysisProgress = progress => {
+    const job = aiAnalysisJobs.get(jobId)
+    if (job?.status === 'processing') job.progress = progress
+  }
   console.info('[AI budget analysis:start]', { ...diagnostic, bytes: file.size })
   try {
     const { draft, model, usage, provider = aiProvider, reading_mode, page_count } = await requestConfiguredBudgetAnalysis(file)
+    file.onAnalysisProgress({ stage: 'validating' })
     assertReadableAnalysis(draft, file.documentKind)
     aiAnalysisJobs.set(jobId, { ...aiAnalysisJobs.get(jobId), status: 'complete', draft, model, usage, provider, reading_mode, page_count })
     console.info('[AI budget analysis:success]', { ...diagnostic, selectedProvider: provider, selectedModel: model, readingMode: reading_mode, pages: page_count, durationMs: Date.now() - startedAt, lineItems: draft.line_items.length, tokens: usage?.total_tokens ?? null, cost: usage?.cost ?? null })
@@ -856,7 +864,7 @@ async function startDocumentAnalysis(req, res) {
 
   const jobId = randomUUID()
   const pollToken = randomUUID()
-  aiAnalysisJobs.set(jobId, { userId, pollToken, requestId: req.requestId, status: 'processing', documentKind: req.file.documentKind, createdAt: now })
+  aiAnalysisJobs.set(jobId, { userId, pollToken, requestId: req.requestId, status: 'processing', progress: { stage: 'preparing' }, documentKind: req.file.documentKind, createdAt: now })
   res.status(202).json({ status: 'processing', job_id: jobId, poll_token: pollToken, usage: usageReservation, request_id: req.requestId })
   setImmediate(() => runBudgetAnalysisJob(jobId, req.file, diagnostic))
   const cleanup = setTimeout(() => aiAnalysisJobs.delete(jobId), 10 * 60 * 1000)
@@ -871,7 +879,7 @@ app.get(['/api/analyze-budget/:jobId', '/api/analyze-invoice/:jobId'], (req, res
   if (!job || job.pollToken !== req.get('x-analysis-token') || (req.path.startsWith('/api/analyze-invoice/') ? job.documentKind !== 'invoice' : job.documentKind !== 'budget')) {
     return res.status(404).json({ error: 'El análisis ya no está disponible. Vuelve a enviar el PDF.', code: 'AI_JOB_NOT_FOUND', request_id: req.requestId })
   }
-  if (job.status === 'processing') return res.status(202).json({ status: 'processing', elapsed_ms: Date.now() - job.createdAt, request_id: job.requestId })
+  if (job.status === 'processing') return res.status(202).json({ status: 'processing', progress: job.progress, elapsed_ms: Date.now() - job.createdAt, request_id: job.requestId })
   if (job.status === 'error') return res.status(job.failure.status).json({ error: job.failure.message, code: job.failure.code, request_id: job.requestId })
   return res.json({ status: 'complete', draft: job.draft, provider: job.provider, model: job.model, usage: job.usage, reading_mode: job.reading_mode, page_count: job.page_count, request_id: job.requestId })
 })

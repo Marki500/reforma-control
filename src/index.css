@@ -50,6 +50,19 @@ button:active { transform: translateY(1px); }
   height: calc(4.5rem + env(safe-area-inset-top));
 }
 .safe-area-sidebar { padding-bottom: env(safe-area-inset-bottom); }
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #68765d transparent;
+  scrollbar-gutter: stable;
+}
+.sidebar-scroll::-webkit-scrollbar { width: 6px; }
+.sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+.sidebar-scroll::-webkit-scrollbar-thumb { background: #68765d; border-radius: 999px; }
+.sidebar-scroll::-webkit-scrollbar-thumb:hover { background: #a8a193; }
+.sidebar-scroll::-webkit-scrollbar-button { display: none; }
+@supports selector(::-webkit-scrollbar) {
+  .sidebar-scroll { scrollbar-width: auto; scrollbar-color: auto; }
+}
 .safe-area-main { padding-bottom: max(7rem, calc(5.75rem + env(safe-area-inset-bottom))); }
 .mobile-bottom-nav { padding-bottom: env(safe-area-inset-bottom); }
 .safe-area-page {

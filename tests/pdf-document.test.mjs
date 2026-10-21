@@ -19,10 +19,13 @@ test('text extraction sends visible content and excludes PDF metadata', async ()
 test('scanned and mixed documents render every page without metadata', async () => {
   for (const modes of [['scan'], ['text', 'scan']]) {
     const document = file(modes)
+    const progress = []
+    document.onAnalysisProgress = update => progress.push(update)
     assert.equal((await inspectPdf(document)).needsVision, true)
     const source = await prepareDocumentContent(document)
     assert.equal(source.mode, 'vision')
     assert.equal(source.pageCount, modes.length)
+    assert.deepEqual(progress.filter(update => update.stage === 'rendering').map(update => [update.page, update.page_count]), modes.map((_, index) => [index + 1, modes.length]))
     const images = source.parts.filter(part => part.type === 'image_url')
     assert.equal(images.length, modes.length)
     for (const part of images) assert.match(part.image_url.url, /^data:image\/png;base64,iVBOR/)

@@ -20,6 +20,8 @@ test('invoice PDF and image analyses use invoice extraction, private polling and
     }
     if (req.url === '/chat/completions') {
       requests.push(JSON.parse(Buffer.concat(chunks).toString()))
+      // Keep the provider pending long enough to verify real analysis progress.
+      await new Promise(resolve => setTimeout(resolve, 300))
       return res.end(JSON.stringify({ model: 'free-vision-test', choices: [{ message: { content: JSON.stringify({ is_invoice: true, document_title: 'Factura ventanas', supplier_name: 'Proveedor prueba', supplier_tax_id: 'B12345678', invoice_number: 'F-2026-01', issued_date: '2026-10-19', due_date: '2026-11-01', currency: 'EUR', subtotal: 100, tax_amount: 21, tax_rate: 21, total_amount: 121, line_items: [], warnings: [] }) } }] }))
     }
     res.writeHead(404); res.end('{}')
@@ -56,13 +58,19 @@ test('invoice PDF and image analyses use invoice extraction, private polling and
       assert.equal((await fetch(`${base}/api/analyze-invoice/${job.job_id}`)).status, 404)
       assert.equal((await fetch(`${base}/api/analyze-budget/${job.job_id}`, { headers: { 'x-analysis-token': job.poll_token } })).status, 404)
       let result
+      let sawAnalyzing = false
       for (let attempt = 0; attempt < 100; attempt++) {
         const poll = await fetch(`${base}/api/analyze-invoice/${job.job_id}`, { headers: { 'x-analysis-token': job.poll_token } })
         result = await poll.json()
         if (poll.status !== 202) { assert.equal(poll.status, 200, JSON.stringify(result)); break }
+        assert.ok(['preparing', 'rendering', 'analyzing', 'validating'].includes(result.progress?.stage), JSON.stringify(result))
+        if (result.progress.stage === 'analyzing') sawAnalyzing = true
+        assert.ok(result.elapsed_ms >= 0)
+        assert.equal('pollToken' in result, false)
         await new Promise(resolve => setTimeout(resolve, 50))
       }
       assert.equal(result.status, 'complete')
+      assert.equal(sawAnalyzing, true, 'polling reports the actual pending provider request')
       assert.equal(result.draft.is_invoice, true)
       assert.equal(result.draft.invoice_number, 'F-2026-01')
       assert.equal(result.draft.total_amount, 121)

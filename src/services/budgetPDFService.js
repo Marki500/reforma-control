@@ -136,7 +136,8 @@ async function pollBudgetAnalysis(job) {
   return result
 }
 
-export async function analyzeBudgetPDF(file, { kind = 'budget' } = {}) {
+export async function analyzeBudgetPDF(file, { kind = 'budget', onProgress = () => {} } = {}) {
+  onProgress({ stage: 'checking' })
   let health
   try {
     const response = await fetch('/api/health', { cache: 'no-store' })
@@ -150,6 +151,7 @@ export async function analyzeBudgetPDF(file, { kind = 'budget' } = {}) {
   }
   const formData = new FormData()
   formData.append('file', file)
+  onProgress({ stage: 'uploading' })
   let job
   try {
     job = await authenticatedRequest(kind === 'invoice' ? '/api/analyze-invoice' : '/api/analyze-budget', formData)
@@ -158,16 +160,22 @@ export async function analyzeBudgetPDF(file, { kind = 'budget' } = {}) {
   }
   job.documentKind = kind
   if (!job.job_id || !job.poll_token) throw new Error(`El servidor no inició el análisis. Diagnóstico: ${job.request_id || 'sin identificador'}`)
+  onProgress({ stage: 'preparing' })
   const analysisDeadline = Date.now() + 5 * 60 * 1000
   let transientFailureStartedAt = null
   while (Date.now() < analysisDeadline) {
     await wait(2000)
     try {
       const result = await pollBudgetAnalysis(job)
-      if (result.status === 'complete') return result
+      if (result.status === 'complete') {
+        onProgress({ stage: 'complete' })
+        return result
+      }
+      onProgress({ ...(result.progress || { stage: 'processing' }), reconnecting: false })
       transientFailureStartedAt = null
     } catch (error) {
       if (error.transient) {
+        onProgress({ stage: 'reconnecting', reconnecting: true })
         transientFailureStartedAt ||= Date.now()
         if (Date.now() - transientFailureStartedAt < 60 * 1000) continue
       }

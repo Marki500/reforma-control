@@ -18,7 +18,7 @@ export default function Sidebar({ onNavigate, onClose }) {
         <div className="mt-4"><ProjectSwitcher inverse /></div>
       </div>
 
-      <nav aria-label="Navegación principal" className="flex-1 overflow-y-auto px-3 pb-4">
+      <nav aria-label="Navegación principal" className="sidebar-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-4">
         {[{ label: null, links: [navigationLinks[0]] }, ...navigationGroups].map(group => <div key={group.label || 'overview'} className="mb-3 space-y-0.5">
           {group.label && <p className="px-3.5 pb-1 pt-2 text-[0.65rem] font-semibold uppercase tracking-wider text-white/60">{group.label}</p>}
           {group.links.map((link) => {

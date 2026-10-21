@@ -15,6 +15,7 @@ const textLength = value => contentText(value).replace(/[^\p{L}\p{N}]/gu, '').le
 // The cache lives only on this job's in-memory file. Metadata (Author, Creator,
 // filename) never becomes evidence of a supplier or an economic value.
 export function inspectPdf(file) {
+  if (!file.pdfInspection) file.onAnalysisProgress?.({ stage: 'preparing' })
   file.pdfInspection ||= inspectPdfBuffer(file.buffer)
   return file.pdfInspection
 }
@@ -46,6 +47,7 @@ export async function renderPdfPages(file) {
     const pages = []
     let bytes = 0
     for (const page of info.pages) {
+      file.onAnalysisProgress?.({ stage: 'rendering', page: page.pageNumber, page_count: inspection.pageCount })
       if (!(page.width > 0) || !(page.height > 0)) throw new PdfDocumentError('El PDF contiene una página con dimensiones no válidas.')
       // Bound both axes, not only the width, before allocating a canvas.
       const scale = Math.min(1800 / page.width, 2600 / page.height)

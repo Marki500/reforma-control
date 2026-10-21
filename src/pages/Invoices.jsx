@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import AnalysisProgress from '../components/budget/AnalysisProgress'
 import { DocumentReview, ReviewChecks } from '../components/budget/DocumentReview'
 import { documentReviewIssues } from '../utils/documentReview'
 import { phasesOf } from '../utils/paymentPhases'
@@ -30,6 +31,7 @@ export default function Invoices() {
   const [query, setQuery] = useState(''), [status, setStatus] = useState('')
   const [open, setOpen] = useState(false), [form, setForm] = useState(empty), [file, setFile] = useState(null), [id, setId] = useState(''), [upload, setUpload] = useState(null)
   const [analysis, setAnalysis] = useState(null), [analysisError, setAnalysisError] = useState(''), [usage, setUsage] = useState(null)
+  const [analysisProgress, setAnalysisProgress] = useState(null)
   const [busy, setBusy] = useState(''), [reviewed, setReviewed] = useState(false), [formError, setFormError] = useState('')
   const [viewer, setViewer] = useState(null), [deleting, setDeleting] = useState(null)
   const fileInput = useRef(), operation = useRef(false)
@@ -69,8 +71,9 @@ export default function Invoices() {
     if (!file || operation.current) return
     if (file.size > 14 * 1024 * 1024) { setAnalysisError('Para analizar con IA, el documento debe ocupar hasta 14 MB. Puedes rellenarlo manualmente.'); return }
     operation.current = true; setBusy('analysis'); setAnalysis(null); setReviewed(false); setAnalysisError(''); setFormError('')
+    setAnalysisProgress({ stage: 'checking' })
     try {
-      const result = await analyzeInvoice(file), draft = result.draft
+      const result = await analyzeInvoice(file, { onProgress: setAnalysisProgress }), draft = result.draft
       const problem = analysisProblem(draft, 'invoice')
       if (problem) { setAnalysis(null); setAnalysisError(problem); return }
       const supplier = suppliers.find(item => item.status !== 'Archivado' && normalizeInvoiceKey(item.name) === normalizeInvoiceKey(draft.supplier_name))
@@ -143,6 +146,7 @@ export default function Invoices() {
         <fieldset disabled={Boolean(busy) || Boolean(upload)} className="space-y-5 disabled:opacity-80">
           <div className="rounded-xl border border-dashed border-stone-300 bg-stone-50 p-4"><input ref={fileInput} type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden" onChange={event => chooseFile(event.target.files?.[0])} /><Button type="button" variant="secondary" className="w-full" onClick={() => fileInput.current?.click()}><Upload size={16} />{file ? 'Cambiar documento' : 'Seleccionar documento'}</Button>{file && <p className="mt-2 break-words text-sm text-stone-700">{file.name}</p>}<p className="mt-2 text-xs text-stone-600">PDF, JPG, PNG o WebP · Hasta 20 MB</p></div>
           <div className="space-y-2"><Button type="button" variant="olive" className="w-full" disabled={!file || usage?.allowed === false} onClick={analyze}><Sparkles size={16} />Analizar con IA</Button><p className="text-xs leading-relaxed text-stone-600">Opcional. Puedes rellenar los datos manualmente. El análisis utiliza la IA configurada para NIVEL y comparte el cupo con Presupuestos.</p>{usage && <p className="text-xs text-stone-600">{usage.user_used} de {usage.user_limit} análisis utilizados hoy · Cupo global: {usage.global_used} de {usage.global_limit}</p>}</div>
+          {busy === 'analysis' && <AnalysisProgress progress={analysisProgress} />}
           {analysisError && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{analysisError}</p>}
           {analysis?.warnings?.length > 0 && <ul className="list-inside list-disc rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{analysis.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
           {file && <ReviewChecks values={form} kind="invoice" />}
@@ -165,7 +169,6 @@ export default function Invoices() {
           <label className="block text-sm text-stone-700">Notas<textarea className={inputClass} rows={3} maxLength={2000} value={form.notes} onChange={event => change('notes', event.target.value)} /></label>
           {analysis?.line_items?.length > 0 && <details className="rounded-xl bg-stone-50 p-3"><summary className="cursor-pointer text-sm font-medium text-stone-700">Partidas extraídas · {analysis.line_items.length}</summary><ul className="mt-3 space-y-2 text-xs text-stone-600">{analysis.line_items.map((item, index) => <li key={index}>{item.description}{item.total != null && ` · ${formatCurrency(item.total)}`}</li>)}</ul></details>}
         </fieldset>
-        {busy === 'analysis' && <p role="status" className="text-sm text-olive">Analizando el documento… Puede tardar unos minutos.</p>}
         {duplicate && duplicate.id !== id && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Ya existe la factura {duplicate.invoice_number} de este proveedor. Comprueba el registro antes de continuar.</p>}
         <label className="flex items-start gap-3 text-sm text-stone-700"><input type="checkbox" className="mt-1 h-4 w-4 accent-olive" checked={reviewed} disabled={Boolean(busy) || Boolean(upload)} onChange={event => setReviewed(event.target.checked)} />He revisado el documento, los importes y el gasto de destino.</label>
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="secondary" disabled={Boolean(busy)} onClick={closeUpload}>Cancelar</Button><Button type="submit" disabled={Boolean(busy) || !file || !reviewed || Boolean(duplicate && duplicate.id !== id)}>{busy === 'save' ? 'Registrando…' : form.expense_id ? 'Registrar y actualizar gasto' : 'Registrar en gastos'}</Button></div>

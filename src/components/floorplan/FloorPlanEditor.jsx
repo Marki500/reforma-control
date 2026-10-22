@@ -3,8 +3,9 @@ import { ArrowLeft, MousePointer2, Square, Minus, DoorOpen, PanelsTopLeft, Hand,
 import { Button } from '../ui/Button'
 import ConfirmDialog from '../ui/ConfirmDialog'
 import PlanDrawing from './PlanDrawing'
+import WallMeasurements from './WallMeasurements'
 import { saveInteractiveFloorPlan } from '../../services/floorplanService'
-import { addWall, distance, drawingTargets, snapDrawing, emptyPlan, fitOpening, moveJunctions, planBounds, roomArea, projectToWall, reconcilePlan, samePoint, snap, validatePlan, wallEndpointChanges } from '../../utils/floorPlan'
+import { addWall, distance, drawingTargets, snapDrawing, emptyPlan, fitOpening, resizeWall, planBounds, roomArea, projectToWall, reconcilePlan, samePoint, snap, validatePlan, wallEndpointChanges } from '../../utils/floorPlan'
 import { gestureView, touchPair, zoomView } from '../../utils/planNavigation'
 
 const tools = [
@@ -196,7 +197,7 @@ export default function FloorPlanEditor({ plan, rooms, canEdit, draftKey, onClos
       const width = tool === 'door' ? 0.8 : 1.2
       const fit = fitOpening(data, nearest.wall.id, nearest.offset - width / 2, width)
       if (!fit) { setError('No hay espacio suficiente: evita los extremos y otras puertas o ventanas.'); return }
-      const added = { id: crypto.randomUUID(), wallId: nearest.wall.id, type: tool, ...fit, flip: false }
+      const added = { id: crypto.randomUUID(), wallId: nearest.wall.id, type: tool, ...fit, flip: false, hinge: 'left', ...(tool === 'window' ? { windowType: 'sliding' } : {}) }
       commit({ ...data, openings: [...data.openings, added] }); setSelected({ kind: 'opening', id: added.id }); changeTool('select'); return
     }
     const next = magneticPoint(event)
@@ -365,16 +366,23 @@ export default function FloorPlanEditor({ plan, rooms, canEdit, draftKey, onClos
           <h2 className="mb-3 text-sm font-semibold">{wall ? 'Pared seleccionada' : opening ? opening.type === 'door' ? 'Puerta seleccionada' : 'Ventana seleccionada' : room ? 'Habitación seleccionada' : 'Cómo empezar'}</h2>
           {!selected && <p className="text-sm leading-relaxed text-stone-600">{instructions}</p>}
           {wall && <div className="space-y-3">
-            <NumberField key={`${wall.id}-length`} label="Longitud (m)" value={Number(distance(wall.a, wall.b).toFixed(2))} min={0.2} max={100} disabled={!writable} onChange={value => {
-              const length = distance(wall.a, wall.b), next = { x: wall.a.x + (wall.b.x - wall.a.x) * value / length, y: wall.a.y + (wall.b.y - wall.a.y) * value / length }
-              if (data.openings.some(o => o.wallId === wall.id && o.offset + o.width > value - 0.05)) { setError('Esa longitud dejaría una puerta o ventana fuera de la pared. Muévela o retírala primero.'); return }
-              commit(moveJunctions(data, wallEndpointChanges(data, wall, wall.a, next)))
+            <WallMeasurements key={wall.id} wall={wall} disabled={!writable} onApply={values => {
+              try { commit(resizeWall(data, wall.id, values)); setNotice('Medidas de pared aplicadas.'); return '' }
+              catch (err) { return err.message }
             }} />
-            <NumberField label="Grosor (m)" value={wall.thickness} min={0.05} max={1} disabled={!writable} onChange={value => commit({ ...data, walls: data.walls.map(w => w.id === wall.id ? { ...w, thickness: value } : w) })} />
-            <NumberField label="Altura (m)" value={wall.height} min={1} max={10} disabled={!writable} onChange={value => commit({ ...data, walls: data.walls.map(w => w.id === wall.id ? { ...w, height: value } : w) })} />
             <p className="text-xs leading-relaxed text-stone-500">Arrastra la pared para moverla. Las paredes unidas a sus extremos se ajustan con ella.</p>
           </div>}
-          {opening && <div className="space-y-3"><NumberField label="Ancho (m)" value={opening.width} min={0.3} max={10} disabled={!writable} onChange={width => updateOpening({ width })} /><NumberField label="Distancia al inicio de pared (m)" value={Number(opening.offset.toFixed(2))} min={0.05} max={100} disabled={!writable} onChange={offset => updateOpening({ offset })} />{opening.type === 'door' && <Button variant="secondary" disabled={!writable} onClick={() => updateOpening({ flip: !opening.flip })}><RotateCcw size={16} />Cambiar apertura</Button>}<p className="text-xs text-stone-500">Arrastra la abertura a lo largo de su pared.</p></div>}
+          {opening && <div className="space-y-3">
+            <NumberField label="Ancho (m)" value={opening.width} min={0.3} max={10} disabled={!writable} onChange={width => updateOpening({ width })} />
+            <NumberField label="Distancia al inicio de pared (m)" value={Number(opening.offset.toFixed(2))} min={0.05} max={100} disabled={!writable} onChange={offset => updateOpening({ offset })} />
+            {opening.type === 'window' && <label className="block text-xs font-medium text-stone-600">Tipo de ventana<select aria-label="Tipo de ventana" className={inputClass} disabled={!writable} value={opening.windowType || 'sliding'} onChange={event => updateOpening({ windowType: event.target.value })}><option value="sliding">Corredera</option><option value="casement">Abatible</option></select></label>}
+            {(opening.type === 'door' || opening.windowType === 'casement') && <>
+              <label className="block text-xs font-medium text-stone-600">Bisagras<select aria-label="Bisagras" className={inputClass} disabled={!writable} value={opening.hinge || 'left'} onChange={event => updateOpening({ hinge: event.target.value })}><option value="left">Izquierda</option><option value="right">Derecha</option></select></label>
+              <Button className="w-full" variant="secondary" disabled={!writable} onClick={() => updateOpening({ flip: !opening.flip })}><RotateCcw size={16} />Invertir sentido de apertura</Button>
+              <p className="text-xs leading-relaxed text-stone-500">La bisagra y el sentido se cambian por separado: puedes combinar izquierda o derecha con apertura hacia cualquiera de los dos lados de la pared. El arco muestra el recorrido.</p>
+            </>}
+            <p className="text-xs text-stone-500">Arrastra la abertura a lo largo de su pared.</p>
+          </div>}
           {room && <div className="space-y-3"><label className="block text-xs font-medium text-stone-600">Nombre de habitación<input className={inputClass} value={room.name} maxLength={80} disabled={!writable} onChange={event => {
             const next = { ...data, rooms: data.rooms.map(r => r.id === room.id ? { ...r, name: event.target.value } : r) }
             // Room labels don't change geometry; keep typing as one undo action on blur.
@@ -385,6 +393,7 @@ export default function FloorPlanEditor({ plan, rooms, canEdit, draftKey, onClos
           {(wall || opening) && canEdit && <button disabled={!writable} className="mt-5 inline-flex min-h-11 items-center gap-2 text-sm text-terracotta disabled:opacity-50" onClick={removeSelected}><Trash2 size={16} />Eliminar {wall ? 'pared' : 'abertura'}</button>}
         </div>
         {data.rooms.length > 0 && <div className="border-t border-stone-100 pt-4"><h3 className="mb-2 text-xs font-semibold text-stone-600">Habitaciones</h3><div className="space-y-1">{data.rooms.map(r => <button key={r.id} onClick={() => { setSelected({ kind: 'room', id: r.id }); changeTool('select') }} className={`flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-2 text-left text-xs ${selected?.id === r.id ? 'bg-olive-light text-olive' : 'hover:bg-stone-50'}`}><span className="truncate">{r.name || 'Sin nombre'}</span><span className="shrink-0 tabular-nums">{roomArea(r).toFixed(1)} m²</span></button>)}</div></div>}
+        {data.walls.length > 0 && <details className="border-t border-stone-100 pt-4"><summary className="min-h-8 cursor-pointer text-xs font-semibold text-stone-600">Paredes · {data.walls.length}</summary><div className="mt-2 space-y-1">{data.walls.map((item, index) => <button key={item.id} type="button" onClick={() => { changeTool('select'); setSelected({ kind: 'wall', id: item.id }) }} className={`flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-2 text-xs ${selected?.id === item.id ? 'bg-olive-light text-olive' : 'hover:bg-stone-50'}`}><span>Pared {index + 1}</span><span className="tabular-nums">{distance(item.a, item.b).toFixed(2)} m</span></button>)}</div></details>}
       </aside>
     </div>
     <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-stone-200 bg-white px-5 py-2.5 text-xs leading-relaxed text-stone-500"><div>{anchor ? 'Marca el siguiente punto.' : instructions}<span className="mt-1 block text-[11px]">Ctrl o espacio + arrastrar: mover vista · Rueda: zoom · Dos dedos: mover y ampliar</span></div>{anchor && <button type="button" className="min-h-11 shrink-0 rounded-lg bg-stone-100 px-3 font-medium text-stone-700 hover:bg-stone-200" onClick={endTrace}>Terminar trazo</button>}</footer>

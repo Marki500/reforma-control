@@ -187,6 +187,24 @@ export function wallEndpointChanges(plan, wall, a, b) {
     return { from, to: { x: a.x + (b.x - a.x) * fraction, y: a.y + (b.y - a.y) * fraction } }
   })
 }
+export function resizeWall(plan, wallId, { length, thickness, height, fixed = 'start' }) {
+  const wall = plan.walls.find(item => item.id === wallId)
+  if (!wall || !Number.isFinite(length) || length < 0.2 || length > 100 || !Number.isFinite(thickness) || thickness < 0.05 || thickness > 1 || !Number.isFinite(height) || height < 1 || height > 10 || !['start', 'end', 'center'].includes(fixed)) throw new Error('Revisa la longitud (0,20–100 m), el grosor (0,05–1 m) y la altura (1–10 m).')
+  if (plan.openings.some(o => o.wallId === wallId && o.offset + o.width > length - 0.05 + 1e-6)) throw new Error('Esa longitud dejaría una puerta o ventana fuera de la pared. Muévela o retírala primero.')
+  const previous = distance(wall.a, wall.b), dx = (wall.b.x - wall.a.x) / previous, dy = (wall.b.y - wall.a.y) / previous
+  const shift = fixed === 'start' ? 0 : fixed === 'end' ? previous - length : (previous - length) / 2
+  const a = { x: wall.a.x + dx * shift, y: wall.a.y + dy * shift }, b = { x: a.x + dx * length, y: a.y + dy * length }
+  const moved = moveJunctions(plan, wallEndpointChanges(plan, wall, a, b))
+  const result = { ...moved, walls: moved.walls.map(item => item.id === wallId ? { ...item, thickness, height } : item) }
+  if (result.openings.length !== plan.openings.length || !validatePlan(result) || Math.abs(distance(result.walls.find(w => w.id === wallId).a, result.walls.find(w => w.id === wallId).b) - length) > 0.001) throw new Error('Esas medidas colapsarían otra pared o dejarían una abertura sin espacio. Ajusta primero los elementos conectados.')
+  return result
+}
+export function openingLeaf(opening, angle = Math.PI / 2) {
+  const direction = opening.hinge === 'right' ? -1 : 1, side = opening.flip ? -1 : 1
+  const hinge = opening.offset + (direction < 0 ? opening.width : 0), closed = hinge + direction * opening.width
+  const x = hinge + direction * opening.width * Math.cos(angle), y = side * opening.width * Math.sin(angle)
+  return { hinge, closed, x, y, arc: `M ${closed} 0 A ${opening.width} ${opening.width} 0 0 ${direction * side > 0 ? 1 : 0} ${x} ${y}` }
+}
 export function validatePlan(plan) {
   if (plan?.version !== 1 || !Array.isArray(plan.walls) || !Array.isArray(plan.openings) || !Array.isArray(plan.rooms) || plan.walls.length > 200 || plan.openings.length > 200 || plan.rooms.length > 200) return false
   const validPoint = p => p && Number.isFinite(p.x) && Number.isFinite(p.y) && Math.abs(p.x) <= 500 && Math.abs(p.y) <= 500
@@ -196,7 +214,7 @@ export function validatePlan(plan) {
     ids.add(item.id)
   }
   return plan.walls.every(w => validPoint(w.a) && validPoint(w.b) && distance(w.a, w.b) >= 0.2 && Number.isFinite(w.thickness) && w.thickness >= 0.05 && w.thickness <= 1 && Number.isFinite(w.height) && w.height >= 1 && w.height <= 10)
-    && plan.openings.every(o => ['door', 'window'].includes(o.type) && Number.isFinite(o.offset) && o.offset >= 0.05 - 1e-6 && fitOpening(plan, o.wallId, o.offset, o.width, o.id) && Math.abs(fitOpening(plan, o.wallId, o.offset, o.width, o.id).offset - o.offset) < 0.001)
+    && plan.openings.every(o => ['door', 'window'].includes(o.type) && (o.hinge === undefined || ['left', 'right'].includes(o.hinge)) && (o.windowType === undefined || ['sliding', 'casement'].includes(o.windowType)) && (o.flip === undefined || typeof o.flip === 'boolean') && Number.isFinite(o.offset) && o.offset >= 0.05 - 1e-6 && fitOpening(plan, o.wallId, o.offset, o.width, o.id) && Math.abs(fitOpening(plan, o.wallId, o.offset, o.width, o.id).offset - o.offset) < 0.001)
     && plan.rooms.every(r => typeof r.name === 'string' && r.name.length <= 80 && Array.isArray(r.points) && r.points.length >= 3 && r.points.length <= 400 && r.points.every(validPoint) && (r.holes === undefined || (Array.isArray(r.holes) && r.holes.length <= 200 && r.holes.every(hole => Array.isArray(hole) && hole.length >= 3 && hole.length <= 400 && hole.every(validPoint)))))
 }
 

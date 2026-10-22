@@ -1,4 +1,4 @@
-import { distance, roomArea, roomCenter } from '../../utils/floorPlan'
+import { distance, openingLeaf, roomArea, roomCenter } from '../../utils/floorPlan'
 
 export default function PlanDrawing({ plan, selected, onSelect, dimensions = true }) {
   const pick = (event, kind, id) => onSelect?.(event, { kind, id })
@@ -19,7 +19,7 @@ export default function PlanDrawing({ plan, selected, onSelect, dimensions = tru
         <line x1={wall.a.x} y1={wall.a.y} x2={wall.b.x} y2={wall.b.y} stroke="transparent" strokeWidth="0.35" />
         <line x1={wall.a.x} y1={wall.a.y} x2={wall.b.x} y2={wall.b.y} stroke={active ? '#d86d4d' : '#42483e'} strokeWidth={wall.thickness} strokeLinecap="square" />
         {dimensions && <text x={(wall.a.x + wall.b.x) / 2 + (vertical ? 0.25 : 0)} y={(wall.a.y + wall.b.y) / 2 - (vertical ? 0 : 0.23)} textAnchor="middle" fontSize="0.16" fill="#777568" paintOrder="stroke" stroke="#faf9f5" strokeWidth="0.07" strokeLinejoin="round" pointerEvents="none">{length.toFixed(2)} m</text>}
-        {active && [wall.a, wall.b].map((p, index) => <circle key={index} cx={p.x} cy={p.y} r="0.09" fill="white" stroke="#d86d4d" strokeWidth="0.04" />)}
+        {active && [wall.a, wall.b].map((p, index) => <g key={index} pointerEvents="none"><circle cx={p.x} cy={p.y} r="0.09" fill="white" stroke="#d86d4d" strokeWidth="0.04" /><text x={p.x} y={p.y - 0.2} textAnchor="middle" fontSize="0.16" fill="#d86d4d" paintOrder="stroke" stroke="#faf9f5" strokeWidth="0.06">{index ? 'B' : 'A'}</text></g>)}
       </g>
     })}
     {plan.openings.map(opening => {
@@ -28,15 +28,25 @@ export default function PlanDrawing({ plan, selected, onSelect, dimensions = tru
       const angle = Math.atan2(wall.b.y - wall.a.y, wall.b.x - wall.a.x) * 180 / Math.PI
       const length = distance(wall.a, wall.b), start = opening.offset
       const active = selected?.id === opening.id, color = active ? '#d86d4d' : opening.type === 'window' ? '#64748b' : '#68765d'
-      const side = opening.flip ? -1 : 1, width = opening.width
+      const width = opening.width, sliding = opening.type === 'window' && opening.windowType !== 'casement'
+      const leaf = openingLeaf(opening, opening.type === 'window' ? Math.PI / 3 : Math.PI / 2)
       return <g key={opening.id} data-plan-kind="opening" data-plan-id={opening.id} transform={`translate(${wall.a.x} ${wall.a.y}) rotate(${angle})`} onPointerDown={event => pick(event, 'opening', opening.id)}>
+        <title>{`${opening.type === 'door' ? 'Puerta' : sliding ? 'Ventana corredera' : 'Ventana abatible'}${sliding ? '' : ` · Bisagra ${opening.hinge === 'right' ? 'derecha' : 'izquierda'}`}`}</title>
         <line x1={start} y1="0" x2={Math.min(length, start + width)} y2="0" stroke="#faf9f5" strokeWidth={wall.thickness + 0.045} />
         {opening.type === 'window' ? <>
           <rect x={start} y={-wall.thickness / 2} width={width} height={wall.thickness} fill="#e6edf0" stroke={color} strokeWidth="0.035" />
-          <line x1={start} y1="0" x2={start + width} y2="0" stroke={color} strokeWidth="0.025" />
+          {sliding ? <>
+            <line x1={start} y1={-wall.thickness * 0.2} x2={start + width * 0.55} y2={-wall.thickness * 0.2} stroke={color} strokeWidth="0.035" />
+            <line x1={start + width * 0.45} y1={wall.thickness * 0.2} x2={start + width} y2={wall.thickness * 0.2} stroke={color} strokeWidth="0.035" />
+            <path d={`M ${start + width * 0.18} -0.2 h ${width * 0.22} m -0.07 -0.05 l 0.07 0 l -0.07 0.05 M ${start + width * 0.82} 0.2 h ${-width * 0.22} m 0.07 -0.05 l -0.07 0 l 0.07 0.05`} fill="none" stroke={color} strokeWidth="0.025" />
+          </> : <>
+            <line x1={leaf.hinge} y1="0" x2={leaf.x} y2={leaf.y} stroke={color} strokeWidth="0.035" />
+            <path d={leaf.arc} fill="none" stroke={color} strokeWidth="0.02" strokeDasharray=".06 .04" />
+            <circle cx={leaf.hinge} cy="0" r="0.04" fill={color} />
+          </>}
         </> : <>
-          <line x1={start} y1="0" x2={start} y2={side * width} stroke={color} strokeWidth="0.045" />
-          <path d={`M ${start + width} 0 A ${width} ${width} 0 0 ${side > 0 ? 1 : 0} ${start} ${side * width}`} fill="none" stroke={color} strokeWidth="0.025" />
+          <line x1={leaf.hinge} y1="0" x2={leaf.x} y2={leaf.y} stroke={color} strokeWidth="0.045" />
+          <path d={leaf.arc} fill="none" stroke={color} strokeWidth="0.025" />
         </>}
         <rect x={start - 0.05} y={-0.18} width={width + 0.1} height="0.36" fill="transparent" />
       </g>

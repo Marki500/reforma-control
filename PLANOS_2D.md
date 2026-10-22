@@ -40,7 +40,9 @@ El editor trabaja en 2D y guarda grosor y altura para una futura vista de volume
 
 `node --test tests/plan-openings.test.mjs`
 
-Las opciones de bisagra y ventana se guardan en el JSON del plano. Los dibujos existentes sin estas opciones mantienen sus puertas con bisagra izquierda y sus ventanas como correderas. No requieren otra migración.
+Las ventanas abatibles permiten elegir **1 o 2 hojas**. Con dos hojas, las bisagras quedan en los extremos y ambas abren hacia el mismo lado; invertir apertura cambia las dos. Las puertas permiten **fijo lateral izquierdo, derecho o a ambos lados**, con ancho configurable por fijo y símbolo F. El **ancho total del hueco incluye los fijos**; el panel muestra cuánto queda para la hoja de puerta. Para conservar el paso, amplía primero el hueco. Se rechazan configuraciones que dejen menos de 0,30 m de hoja (límite geométrico del editor, no comprobación normativa).
+
+Estas opciones se guardan en el JSON del plano y admiten deshacer/rehacer. Los dibujos existentes sin estas opciones mantienen sus puertas sin fijo, con bisagra izquierda, y sus ventanas como correderas; las abatibles anteriores tienen una hoja. No requieren otra migración.
 
 Las pruebas de gestos ejecutan los manejadores reales del editor con eventos simulados, incluyendo Ctrl, dos dedos, la interrupción de un arrastre por un segundo dedo y las pulsaciones canceladas. La sensación táctil debe comprobarse también en un teléfono real.
 

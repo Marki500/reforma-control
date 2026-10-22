@@ -5,7 +5,7 @@ import ConfirmDialog from '../ui/ConfirmDialog'
 import PlanDrawing from './PlanDrawing'
 import WallMeasurements from './WallMeasurements'
 import { saveInteractiveFloorPlan } from '../../services/floorplanService'
-import { addWall, distance, drawingTargets, snapDrawing, emptyPlan, fitOpening, resizeWall, planBounds, roomArea, projectToWall, reconcilePlan, samePoint, snap, validatePlan, wallEndpointChanges } from '../../utils/floorPlan'
+import { addWall, distance, drawingTargets, snapDrawing, emptyPlan, fitOpening, openingParts, openingConfigurationError, resizeWall, planBounds, roomArea, projectToWall, reconcilePlan, samePoint, snap, validatePlan, wallEndpointChanges } from '../../utils/floorPlan'
 import { gestureView, touchPair, zoomView } from '../../utils/planNavigation'
 
 const tools = [
@@ -330,6 +330,8 @@ export default function FloorPlanEditor({ plan, rooms, canEdit, draftKey, onClos
   function updateOpening(changes) {
     const next = { ...opening, ...changes }, fit = fitOpening(data, next.wallId, next.offset, next.width, next.id)
     if (!fit) { setError('La abertura no cabe en esa posición o se solapa con otra.'); return }
+    const configurationError = openingConfigurationError(next)
+    if (configurationError) { setError(configurationError); return }
     commit({ ...data, openings: data.openings.map(o => o.id === next.id ? { ...next, ...fit } : o) })
   }
   const totalArea = data.rooms.reduce((sum, r) => sum + roomArea(r), 0)
@@ -373,13 +375,25 @@ export default function FloorPlanEditor({ plan, rooms, canEdit, draftKey, onClos
             <p className="text-xs leading-relaxed text-stone-500">Arrastra la pared para moverla. Las paredes unidas a sus extremos se ajustan con ella.</p>
           </div>}
           {opening && <div className="space-y-3">
-            <NumberField label="Ancho (m)" value={opening.width} min={0.3} max={10} disabled={!writable} onChange={width => updateOpening({ width })} />
+            <NumberField label="Ancho total del hueco (m)" value={opening.width} min={0.3} max={10} disabled={!writable} onChange={width => updateOpening({ width })} />
             <NumberField label="Distancia al inicio de pared (m)" value={Number(opening.offset.toFixed(2))} min={0.05} max={100} disabled={!writable} onChange={offset => updateOpening({ offset })} />
             {opening.type === 'window' && <label className="block text-xs font-medium text-stone-600">Tipo de ventana<select aria-label="Tipo de ventana" className={inputClass} disabled={!writable} value={opening.windowType || 'sliding'} onChange={event => updateOpening({ windowType: event.target.value })}><option value="sliding">Corredera</option><option value="casement">Abatible</option></select></label>}
+            {opening.type === 'window' && opening.windowType === 'casement' && <label className="block text-xs font-medium text-stone-600">Número de hojas<select aria-label="Número de hojas" className={inputClass} disabled={!writable} value={opening.windowLeaves || 1} onChange={event => updateOpening({ windowLeaves: Number(event.target.value) })}><option value={1}>1 hoja</option><option value={2}>2 hojas</option></select></label>}
+            {opening.type === 'door' && <>
+              <label className="block text-xs font-medium text-stone-600">Fijo lateral<select aria-label="Fijo lateral" className={inputClass} disabled={!writable} value={opening.fixedSide || 'none'} onChange={event => {
+                const fixedSide = event.target.value, count = fixedSide === 'both' ? 2 : 1
+                const fixedWidth = opening.fixedWidth ?? Math.min(0.3, Math.floor((opening.width - 0.3) / count * 100 + 1e-6) / 100)
+                updateOpening({ fixedSide, ...(fixedSide === 'none' ? {} : { fixedWidth }) })
+              }}><option value="none">Sin fijo</option><option value="left">Izquierdo</option><option value="right">Derecho</option><option value="both">A ambos lados</option></select></label>
+              {opening.fixedSide && opening.fixedSide !== 'none' && <>
+                <NumberField label={opening.fixedSide === 'both' ? 'Ancho de cada fijo (m)' : 'Ancho del fijo (m)'} value={opening.fixedWidth ?? 0.3} min={0.1} max={3} disabled={!writable} onChange={fixedWidth => updateOpening({ fixedWidth })} />
+                <p className="text-xs leading-relaxed text-stone-500">Hoja de puerta: {openingParts(opening).leaves[0].width.toFixed(2)} m. El ancho total incluye los fijos, marcados con F en el plano. Amplía el hueco para conservar el ancho de paso.</p>
+              </>}
+            </>}
             {(opening.type === 'door' || opening.windowType === 'casement') && <>
-              <label className="block text-xs font-medium text-stone-600">Bisagras<select aria-label="Bisagras" className={inputClass} disabled={!writable} value={opening.hinge || 'left'} onChange={event => updateOpening({ hinge: event.target.value })}><option value="left">Izquierda</option><option value="right">Derecha</option></select></label>
+              {!(opening.type === 'window' && opening.windowLeaves === 2) && <label className="block text-xs font-medium text-stone-600">Bisagras<select aria-label="Bisagras" className={inputClass} disabled={!writable} value={opening.hinge || 'left'} onChange={event => updateOpening({ hinge: event.target.value })}><option value="left">Izquierda</option><option value="right">Derecha</option></select></label>}
               <Button className="w-full" variant="secondary" disabled={!writable} onClick={() => updateOpening({ flip: !opening.flip })}><RotateCcw size={16} />Invertir sentido de apertura</Button>
-              <p className="text-xs leading-relaxed text-stone-500">La bisagra y el sentido se cambian por separado: puedes combinar izquierda o derecha con apertura hacia cualquiera de los dos lados de la pared. El arco muestra el recorrido.</p>
+              <p className="text-xs leading-relaxed text-stone-500">{opening.type === 'window' && opening.windowLeaves === 2 ? 'Las dos hojas tienen bisagras en los extremos y abren hacia el mismo lado. Puedes invertir su apertura.' : 'La bisagra y el sentido se cambian por separado: puedes combinar izquierda o derecha con apertura hacia cualquiera de los dos lados de la pared.'} El arco muestra el recorrido.</p>
             </>}
             <p className="text-xs text-stone-500">Arrastra la abertura a lo largo de su pared.</p>
           </div>}

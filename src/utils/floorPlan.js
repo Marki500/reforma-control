@@ -205,6 +205,27 @@ export function openingLeaf(opening, angle = Math.PI / 2) {
   const x = hinge + direction * opening.width * Math.cos(angle), y = side * opening.width * Math.sin(angle)
   return { hinge, closed, x, y, arc: `M ${closed} 0 A ${opening.width} ${opening.width} 0 0 ${direction * side > 0 ? 1 : 0} ${x} ${y}` }
 }
+export function openingConfigurationError(opening) {
+  if (opening.windowLeaves !== undefined && ![1, 2].includes(opening.windowLeaves)) return 'La ventana debe tener una o dos hojas.'
+  if (opening.type === 'window' && opening.windowType === 'casement' && opening.windowLeaves === 2 && opening.width < 0.4) return 'Amplía el hueco a al menos 0,40 m para colocar dos hojas.'
+  if (opening.fixedSide !== undefined && !['none', 'left', 'right', 'both'].includes(opening.fixedSide)) return 'Elige dónde colocar el fijo lateral.'
+  if (opening.type === 'door' && opening.fixedSide && opening.fixedSide !== 'none') {
+    const count = opening.fixedSide === 'both' ? 2 : 1, fixedWidth = opening.fixedWidth ?? 0.3
+    if (!Number.isFinite(fixedWidth) || fixedWidth < 0.1 || fixedWidth > 3) return 'El ancho de cada fijo debe estar entre 0,10 y 3 m.'
+    if (opening.width - fixedWidth * count < 0.3 - 1e-6) return 'El fijo deja menos de 0,30 m para la hoja de la puerta. Amplía el hueco o reduce el fijo.'
+  }
+  return ''
+}
+export function openingParts(opening) {
+  if (opening.type === 'window') {
+    const count = opening.windowType === 'casement' && opening.windowLeaves === 2 ? 2 : 1
+    return { fixed: [], leaves: Array.from({ length: count }, (_, index) => ({ ...opening, offset: opening.offset + opening.width * index / count, width: opening.width / count, hinge: count === 2 ? index ? 'right' : 'left' : opening.hinge })) }
+  }
+  const fixedWidth = opening.fixedWidth ?? 0.3, side = opening.fixedSide || 'none', fixed = []
+  if (side === 'left' || side === 'both') fixed.push({ offset: opening.offset, width: fixedWidth })
+  if (side === 'right' || side === 'both') fixed.push({ offset: opening.offset + opening.width - fixedWidth, width: fixedWidth })
+  return { fixed, leaves: [{ ...opening, offset: opening.offset + (side === 'left' || side === 'both' ? fixedWidth : 0), width: opening.width - fixed.length * fixedWidth }] }
+}
 export function validatePlan(plan) {
   if (plan?.version !== 1 || !Array.isArray(plan.walls) || !Array.isArray(plan.openings) || !Array.isArray(plan.rooms) || plan.walls.length > 200 || plan.openings.length > 200 || plan.rooms.length > 200) return false
   const validPoint = p => p && Number.isFinite(p.x) && Number.isFinite(p.y) && Math.abs(p.x) <= 500 && Math.abs(p.y) <= 500
@@ -214,7 +235,7 @@ export function validatePlan(plan) {
     ids.add(item.id)
   }
   return plan.walls.every(w => validPoint(w.a) && validPoint(w.b) && distance(w.a, w.b) >= 0.2 && Number.isFinite(w.thickness) && w.thickness >= 0.05 && w.thickness <= 1 && Number.isFinite(w.height) && w.height >= 1 && w.height <= 10)
-    && plan.openings.every(o => ['door', 'window'].includes(o.type) && (o.hinge === undefined || ['left', 'right'].includes(o.hinge)) && (o.windowType === undefined || ['sliding', 'casement'].includes(o.windowType)) && (o.flip === undefined || typeof o.flip === 'boolean') && Number.isFinite(o.offset) && o.offset >= 0.05 - 1e-6 && fitOpening(plan, o.wallId, o.offset, o.width, o.id) && Math.abs(fitOpening(plan, o.wallId, o.offset, o.width, o.id).offset - o.offset) < 0.001)
+    && plan.openings.every(o => ['door', 'window'].includes(o.type) && !openingConfigurationError(o) && (o.hinge === undefined || ['left', 'right'].includes(o.hinge)) && (o.windowType === undefined || ['sliding', 'casement'].includes(o.windowType)) && (o.flip === undefined || typeof o.flip === 'boolean') && Number.isFinite(o.offset) && o.offset >= 0.05 - 1e-6 && fitOpening(plan, o.wallId, o.offset, o.width, o.id) && Math.abs(fitOpening(plan, o.wallId, o.offset, o.width, o.id).offset - o.offset) < 0.001)
     && plan.rooms.every(r => typeof r.name === 'string' && r.name.length <= 80 && Array.isArray(r.points) && r.points.length >= 3 && r.points.length <= 400 && r.points.every(validPoint) && (r.holes === undefined || (Array.isArray(r.holes) && r.holes.length <= 200 && r.holes.every(hole => Array.isArray(hole) && hole.length >= 3 && hole.length <= 400 && hole.every(validPoint)))))
 }
 

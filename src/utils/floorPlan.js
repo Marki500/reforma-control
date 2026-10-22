@@ -18,17 +18,46 @@ export function projectToWall(point, wall) {
   const projected = pointOnWall(wall, offset)
   return { point: projected, offset, distance: distance(point, projected) }
 }
-export function drawingPoint(point, walls, anchor) {
-  let result = snap(point)
-  const ends = walls.flatMap(wall => [wall.a, wall.b])
-  const nearest = ends.find(end => distance(end, result) < 0.18)
-  if (nearest) result = { ...nearest }
-  if (anchor) {
-    result = Math.abs(result.x - anchor.x) >= Math.abs(result.y - anchor.y)
-      ? { x: result.x, y: anchor.y } : { x: anchor.x, y: result.y }
+export function drawingTargets(walls) {
+  const targets = new Map()
+  for (const wall of walls) for (const point of [wall.a, wall.b]) targets.set(key(point), { point, type: 'endpoint' })
+  for (let i = 0; i < walls.length; i++) for (let j = i + 1; j < walls.length; j++) {
+    const a = walls[i], b = walls[j], r = sub(a.b, a.a), s = sub(b.b, b.a), denominator = cross(r, s)
+    if (Math.abs(denominator) < 1e-8) continue
+    const delta = sub(b.a, a.a), t = cross(delta, s) / denominator, u = cross(delta, r) / denominator
+    if (t < 0 || t > 1 || u < 0 || u > 1) continue
+    const point = { x: a.a.x + t * r.x, y: a.a.y + t * r.y }
+    const interior = (t > 1e-6 && t < 1 - 1e-6) || (u > 1e-6 && u < 1 - 1e-6)
+    if (interior || !targets.has(key(point))) targets.set(key(point), { point, type: 'intersection' })
   }
-  return result
+  return [...targets.values()]
 }
+export function snapDrawing(point, walls, anchor, tolerance = 0.18, targets = drawingTargets(walls)) {
+  const horizontal = anchor && Math.abs(point.x - anchor.x) >= Math.abs(point.y - anchor.y)
+  const constrained = anchor ? horizontal ? { x: point.x, y: anchor.y } : { x: anchor.x, y: point.y } : point
+  const aligned = p => !anchor || Math.abs(horizontal ? p.y - anchor.y : p.x - anchor.x) < 1e-6
+  const nearest = targets.filter(target => aligned(target.point) && distance(target.point, constrained) <= tolerance)
+    .sort((a, b) => distance(a.point, constrained) - distance(b.point, constrained))[0]
+  if (nearest) return { ...nearest, point: { ...nearest.point } }
+  let result = snap(constrained)
+  if (anchor) result = horizontal ? { x: result.x, y: anchor.y } : { x: anchor.x, y: result.y }
+  const candidates = []
+  for (const wall of walls) {
+    let projected = projectToWall(result, wall).point
+    if (anchor && !aligned(projected)) {
+      const axis = horizontal ? 'y' : 'x', other = horizontal ? 'x' : 'y', denominator = wall.b[axis] - wall.a[axis]
+      if (Math.abs(denominator) < 1e-8) continue
+      const fraction = (anchor[axis] - wall.a[axis]) / denominator
+      if (fraction < 0 || fraction > 1) continue
+      projected = { [axis]: anchor[axis], [other]: wall.a[other] + fraction * (wall.b[other] - wall.a[other]) }
+    }
+    const gap = distance(projected, constrained)
+    if (gap <= tolerance) candidates.push({ point: projected, type: 'wall', gap })
+  }
+  candidates.sort((a, b) => a.gap - b.gap)
+  return candidates[0] || { point: result, type: 'grid' }
+}
+export const drawingPoint = (point, walls, anchor) => snapDrawing(point, walls, anchor).point
 export function polygonArea(points) {
   return points.reduce((sum, p, index) => sum + cross(p, points[(index + 1) % points.length]), 0) / 2
 }

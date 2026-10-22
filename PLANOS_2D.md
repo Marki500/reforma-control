@@ -15,10 +15,11 @@ Sin la migración puedes dibujar y exportar, pero guardar mostrará un aviso. No
 ## Uso
 
 - **Habitación:** marca dos esquinas opuestas para crear cuatro paredes.
-- **Pared:** marca puntos sucesivos. Esc termina la cadena. Los espacios cerrados se reconocen automáticamente; un tabique entre paredes puede dividir una habitación.
+- **Pared:** marca puntos sucesivos. Puedes comenzar o terminar exactamente en un extremo, una intersección o en mitad de otra pared. El indicador verde confirma el ajuste y su alcance se adapta al zoom. Esc, clic derecho o **Terminar trazo** terminan la cadena. Los espacios cerrados se reconocen automáticamente; un tabique entre paredes puede dividir una habitación.
 - **Puerta / Ventana:** pulsa sobre una pared con espacio libre. Selecciona la abertura para ajustar ancho y posición, o arrástrala por su pared. Las puertas permiten cambiar el lado de apertura.
 - **Seleccionar:** pulsa una pared para modificar longitud, grosor o altura. Arrastrarla mueve también los extremos conectados. Pulsa una habitación para nombrarla y vincularla a una estancia existente.
-- **Mover vista:** arrastra el lienzo. Los controles inferiores permiten acercar, alejar y centrar.
+- **Mover vista:** arrastra el lienzo. También puedes mantener Ctrl/Cmd o espacio y arrastrar, o usar el botón central del ratón, sin cambiar de herramienta ni mover una pared. El espacio se activa con el foco en el lienzo. La rueda amplía o reduce alrededor del cursor y los controles inferiores permiten acercar, alejar y centrar.
+- **Móvil:** un dedo selecciona, dibuja mediante toques o arrastra un elemento. Dos dedos desplazan el plano y pellizcar ajusta el zoom. La primera pulsación táctil espera a soltarse antes de colocar un punto: añadir un segundo dedo cancela cualquier arrastre de objeto en curso y no crea paredes. Tras levantar uno de los dedos, se espera a que ambos se hayan levantado antes de permitir dibujar otra vez.
 - **Deshacer / Rehacer:** disponibles en la barra. Ctrl/Cmd + Z deshace; Ctrl/Cmd + Shift + Z rehace. Supr elimina la pared o abertura seleccionada. Ctrl/Cmd + S guarda cuando el foco está en el lienzo.
 - **Guardar:** conserva la distribución en el proyecto. Si otra persona la ha guardado desde que la abriste, la actualización se rechaza: exporta tu copia y vuelve a abrir el plano.
 - **Exportar / Importar:** copia JSON editable de hasta 1 MB. Importar sustituye el dibujo después de confirmarlo y se puede deshacer.
@@ -34,6 +35,10 @@ El editor trabaja en 2D y guarda grosor y altura para una futura vista de volume
 ## Validación
 
 `node --test tests/floor-plan.test.mjs`
+
+`node --test tests/plan-navigation.test.mjs tests/plan-gestures.test.mjs`
+
+Las pruebas de gestos ejecutan los manejadores reales del editor con eventos simulados, incluyendo Ctrl, dos dedos, la interrupción de un arrastre por un segundo dedo y las pulsaciones canceladas. La sensación táctil debe comprobarse también en un teléfono real.
 
 `npm run build`
 

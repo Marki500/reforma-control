@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, MousePointer2, Square, Minus, DoorOpen, PanelsTopLeft, Hand, Undo2, Redo2, ZoomIn, ZoomOut, Maximize, Save, Download, Upload, Trash2, Ruler, RotateCcw } from 'lucide-react'
 import { Button } from '../ui/Button'
 import ConfirmDialog from '../ui/ConfirmDialog'
 import PlanDrawing from './PlanDrawing'
 import { saveInteractiveFloorPlan } from '../../services/floorplanService'
-import { addWall, distance, drawingPoint, emptyPlan, fitOpening, moveJunctions, planBounds, roomArea, projectToWall, reconcilePlan, samePoint, snap, validatePlan, wallEndpointChanges } from '../../utils/floorPlan'
+import { addWall, distance, drawingTargets, snapDrawing, emptyPlan, fitOpening, moveJunctions, planBounds, roomArea, projectToWall, reconcilePlan, samePoint, snap, validatePlan, wallEndpointChanges } from '../../utils/floorPlan'
+import { gestureView, touchPair, zoomView } from '../../utils/planNavigation'
 
 const tools = [
   ['select', 'Seleccionar', MousePointer2], ['wall', 'Pared', Minus], ['room', 'Habitación', Square],
@@ -43,6 +44,7 @@ export default function FloorPlanEditor({ plan, rooms, canEdit, draftKey, onClos
   const [data, setData] = useState(initial.current.data), [name, setName] = useState(initial.current.name)
   const [meta, setMeta] = useState(plan), [tool, setTool] = useState('select'), [selected, setSelected] = useState(null)
   const [anchor, setAnchor] = useState(null), [cursor, setCursor] = useState(null)
+  const [magnet, setMagnet] = useState(null), [navigating, setNavigating] = useState(false)
   const [view, setView] = useState(() => planBounds(initial.current.data)), [dimensions, setDimensions] = useState(true)
   const [history, setHistory] = useState({ past: [], future: [] }), [saving, setSaving] = useState(false)
   const [error, setError] = useState(''), [notice, setNotice] = useState(initial.current.recovered ? 'Borrador de esta sesión recuperado.' : '')
@@ -50,6 +52,8 @@ export default function FloorPlanEditor({ plan, rooms, canEdit, draftKey, onClos
   const [pendingImport, setPendingImport] = useState(null)
   const savedSnapshot = useRef(snapshot(plan.name, plan.plan_data || emptyPlan()))
   const svgRef = useRef(), rootRef = useRef(), importRef = useRef(), gesture = useRef(null), labelBefore = useRef(null), live = useRef(data), pendingFrame = useRef(null)
+  const touches = useRef(new Map()), spaceHeld = useRef(false)
+  const targets = useMemo(() => ['wall', 'room'].includes(tool) ? drawingTargets(data.walls) : [], [data.walls, tool])
   const storageKey = meta.updated_at && plan.draftSlot ? draftKey.slice(0, draftKey.lastIndexOf(':') + 1) + meta.id : draftKey
   const dirty = snapshot(name, data) !== savedSnapshot.current || (!meta.updated_at && data.walls.length > 0)
   const writable = canEdit && !saving
@@ -75,6 +79,28 @@ export default function FloorPlanEditor({ plan, rooms, canEdit, draftKey, onClos
     svgRef.current?.focus()
     return () => { document.body.style.overflow = previous; focused?.focus?.(); if (pendingFrame.current) cancelAnimationFrame(pendingFrame.current) }
   }, [])
+  useEffect(() => {
+    const releaseSpace = event => { if (event.code === 'Space') spaceHeld.current = false }
+    const blur = () => {
+      spaceHeld.current = false; touches.current.clear()
+      if (gesture.current?.type === 'move') { live.current = gesture.current.before; setData(live.current) }
+      if (pendingFrame.current) { cancelAnimationFrame(pendingFrame.current); pendingFrame.current = null }
+      gesture.current = null; setNavigating(false)
+    }
+    window.addEventListener('keyup', releaseSpace); window.addEventListener('blur', blur)
+    return () => { window.removeEventListener('keyup', releaseSpace); window.removeEventListener('blur', blur) }
+  }, [])
+  useEffect(() => {
+    const canvas = svgRef.current
+    const wheel = event => {
+      event.preventDefault()
+      if (gesture.current) return
+      const focus = point(event), factor = Math.exp(Math.max(-100, Math.min(100, event.deltaY)) * 0.002)
+      setView(current => zoomView(current, factor, focus)); setMagnet(null)
+    }
+    canvas.addEventListener('wheel', wheel, { passive: false })
+    return () => canvas.removeEventListener('wheel', wheel)
+  }, [])
 
   function finishLabel() {
     if (!labelBefore.current) return
@@ -82,7 +108,8 @@ export default function FloorPlanEditor({ plan, rooms, canEdit, draftKey, onClos
     labelBefore.current = null
     commit(live.current, before)
   }
-  function changeTool(next) { finishLabel(); setNotice(''); if (next !== 'select') setSelected(null); setTool(next); setAnchor(null); setCursor(null) }
+  function endTrace() { setAnchor(null); setCursor(null); setMagnet(null) }
+  function changeTool(next) { finishLabel(); setNotice(''); if (next !== 'select') setSelected(null); setTool(next); endTrace() }
   function commit(next, before = data) {
     const result = reconcilePlan(next)
     if (result.openings.length < next.openings.length) { setError('Ese cambio dejaría una puerta o ventana sin espacio. Muévela o retírala primero.'); setData(before); live.current = before; return }
@@ -109,6 +136,37 @@ export default function FloorPlanEditor({ plan, rooms, canEdit, draftKey, onClos
     const matrix = svgRef.current.getScreenCTM()
     return new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse())
   }
+  function magneticPoint(event) {
+    const matrix = svgRef.current.getScreenCTM(), pixels = event.pointerType === 'touch' ? 18 : 10
+    const tolerance = Math.max(0.015, Math.min(0.5, pixels / Math.hypot(matrix.a, matrix.b)))
+    const result = snapDrawing(point(event), data.walls, tool === 'wall' ? anchor : null, tolerance, targets)
+    setMagnet({ ...result, radius: tolerance * 0.4 }); return result.point
+  }
+  function onPointerCapture(event) {
+    if (event.pointerType === 'touch') {
+      event.preventDefault(); event.stopPropagation(); finishLabel()
+      const node = event.target.closest?.('[data-plan-kind]')
+      const target = node ? { kind: node.dataset.planKind, id: node.dataset.planId } : null
+      touches.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+      svgRef.current.setPointerCapture(event.pointerId)
+      if (touches.current.size === 1) {
+        gesture.current = { type: tool === 'pan' ? 'pan' : 'touchPending', start: point(event), startClient: { x: event.clientX, y: event.clientY }, view, matrix: svgRef.current.getScreenCTM().inverse(), target }
+        if (tool === 'pan') setNavigating(true)
+      } else if (touches.current.size === 2) {
+        if (pendingFrame.current) { cancelAnimationFrame(pendingFrame.current); pendingFrame.current = null }
+        if (gesture.current?.type === 'move') { live.current = gesture.current.before; setData(live.current) }
+        const pair = touchPair(touches.current), matrix = svgRef.current.getScreenCTM().inverse()
+        gesture.current = { type: 'pinch', view, matrix, span: pair.distance, start: new DOMPoint(pair.center.x, pair.center.y).matrixTransform(matrix) }
+        setNavigating(true); setMagnet(null)
+      }
+      return
+    }
+    if (event.button === 1 || (event.button === 0 && (event.ctrlKey || event.metaKey || spaceHeld.current))) {
+      event.preventDefault(); event.stopPropagation(); svgRef.current.focus(); finishLabel()
+      gesture.current = { type: 'pan', start: point(event), view, matrix: svgRef.current.getScreenCTM().inverse() }
+      svgRef.current.setPointerCapture(event.pointerId); setNavigating(true); setMagnet(null)
+    }
+  }
   function onElementDown(event, target) {
     if (event.button !== 0) return
     finishLabel()
@@ -127,7 +185,7 @@ export default function FloorPlanEditor({ plan, rooms, canEdit, draftKey, onClos
     const p = point(event)
     if (tool === 'pan') {
       gesture.current = { type: 'pan', start: p, view, matrix: svgRef.current.getScreenCTM().inverse() }
-      svgRef.current.setPointerCapture(event.pointerId); return
+      svgRef.current.setPointerCapture(event.pointerId); setNavigating(true); return
     }
     if (tool === 'select') { setSelected(null); return }
     if (!writable) return
@@ -141,7 +199,7 @@ export default function FloorPlanEditor({ plan, rooms, canEdit, draftKey, onClos
       const added = { id: crypto.randomUUID(), wallId: nearest.wall.id, type: tool, ...fit, flip: false }
       commit({ ...data, openings: [...data.openings, added] }); setSelected({ kind: 'opening', id: added.id }); changeTool('select'); return
     }
-    const next = drawingPoint(p, data.walls, tool === 'wall' ? anchor : null)
+    const next = magneticPoint(event)
     if (Math.abs(next.x) > 500 || Math.abs(next.y) > 500) { setError('Dibuja dentro de los 500 metros del origen.'); return }
     if (!anchor) { setAnchor(next); setCursor(next); return }
     let nextPlan = data
@@ -158,14 +216,29 @@ export default function FloorPlanEditor({ plan, rooms, canEdit, draftKey, onClos
     }
   }
   function onMove(event) {
-    const currentGesture = gesture.current
+    let currentGesture = gesture.current
+    if (event.pointerType === 'touch' && touches.current.has(event.pointerId)) {
+      touches.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+      if (currentGesture?.type === 'pinch' && touches.current.size >= 2) {
+        const pair = touchPair(touches.current), center = new DOMPoint(pair.center.x, pair.center.y).matrixTransform(currentGesture.matrix)
+        setView(gestureView(currentGesture.view, currentGesture.start, center, pair.distance / currentGesture.span)); return
+      }
+      if (currentGesture?.type === 'touchSuppress') return
+      if (currentGesture?.type === 'touchPending') {
+        if (distance(currentGesture.startClient, { x: event.clientX, y: event.clientY }) < 8) return
+        currentGesture.cancelTap = true
+        if (tool !== 'select' || !writable || !['wall', 'opening'].includes(currentGesture.target?.kind)) return
+        currentGesture = { ...currentGesture, type: 'move', before: data }
+        gesture.current = currentGesture; live.current = data; setSelected(currentGesture.target)
+      }
+    }
     if (!currentGesture) {
-      if (anchor) setCursor(drawingPoint(point(event), data.walls, tool === 'wall' ? anchor : null))
+      if (tool === 'wall' || tool === 'room') setCursor(magneticPoint(event))
       return
     }
     const p = new DOMPoint(event.clientX, event.clientY).matrixTransform(currentGesture.matrix)
     const delta = snap({ x: p.x - currentGesture.start.x, y: p.y - currentGesture.start.y })
-    if (currentGesture.type === 'pan') { setView({ ...currentGesture.view, x: currentGesture.view.x - delta.x, y: currentGesture.view.y - delta.y }); return }
+    if (currentGesture.type === 'pan') { setView(gestureView(currentGesture.view, currentGesture.start, p)); return }
     const before = currentGesture.before, target = currentGesture.target
     if (target.kind === 'wall') {
       const moving = before.walls.find(w => w.id === target.id)
@@ -184,17 +257,32 @@ export default function FloorPlanEditor({ plan, rooms, canEdit, draftKey, onClos
   function finishGesture(event, cancel = false) {
     const currentGesture = gesture.current
     if (!currentGesture) return
+    if (event.pointerType === 'touch') {
+      touches.current.delete(event.pointerId)
+      if (['pinch', 'touchSuppress'].includes(currentGesture.type)) {
+        gesture.current = touches.current.size ? { type: 'touchSuppress' } : null
+        if (!touches.current.size) setNavigating(false)
+        return
+      }
+      if (currentGesture.type === 'touchPending') {
+        gesture.current = null
+        if (!cancel && !currentGesture.cancelTap && distance(currentGesture.startClient, { x: event.clientX, y: event.clientY }) < 8) {
+          if (tool === 'select') { setSelected(currentGesture.target); setNotice(''); setError('') }
+          else onCanvasDown(event)
+        }
+        return
+      }
+    }
     if (pendingFrame.current) { cancelAnimationFrame(pendingFrame.current); pendingFrame.current = null }
     if (currentGesture.type === 'move') {
       if (cancel) { setData(currentGesture.before); live.current = currentGesture.before }
       else commit(live.current, currentGesture.before)
     }
-    gesture.current = null
+    gesture.current = null; setNavigating(false)
     if (svgRef.current.hasPointerCapture(event.pointerId)) svgRef.current.releasePointerCapture(event.pointerId)
   }
   function zoom(factor) {
-    const width = Math.max(3, Math.min(120, view.width * factor)), ratio = width / view.width
-    setView({ x: view.x + (view.width - width) / 2, y: view.y + (view.height - view.height * ratio) / 2, width, height: view.height * ratio })
+    setView(current => zoomView(current, factor)); setMagnet(null)
   }
   async function save() {
     if (!writable) return
@@ -231,8 +319,10 @@ export default function FloorPlanEditor({ plan, rooms, canEdit, draftKey, onClos
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
     }
     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName)) return
+    if (event.code === 'Space' && svgRef.current.contains(event.target)) { event.preventDefault(); spaceHeld.current = true; return }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); save(); return }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); travel(event.shiftKey ? 'redo' : 'undo'); return }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); travel('redo'); return }
     if (event.key === 'Escape') { setAnchor(null); setCursor(null); setSelected(null); changeTool('select') }
     if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); removeSelected() }
   }
@@ -257,11 +347,12 @@ export default function FloorPlanEditor({ plan, rooms, canEdit, draftKey, onClos
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
       <div className="relative min-h-[380px] flex-1 lg:min-h-0">
         {(error || notice) && <p role={error ? 'alert' : 'status'} className={`absolute left-4 right-4 top-3 z-10 rounded-lg px-4 py-3 text-sm shadow-sm ${error ? 'bg-amber-50 text-amber-900' : 'bg-olive-light text-olive'}`}>{error || notice}</p>}
-        <svg ref={svgRef} tabIndex={0} aria-label="Lienzo del plano 2D" role="application" viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`} className={`absolute inset-0 h-full w-full touch-none bg-[#faf9f5] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-olive ${tool === 'pan' ? 'cursor-grab' : tool === 'select' ? 'cursor-default' : 'cursor-crosshair'}`} onPointerDown={onCanvasDown} onPointerMove={onMove} onPointerUp={event => finishGesture(event)} onPointerCancel={event => finishGesture(event, true)}>
+        <svg ref={svgRef} tabIndex={0} aria-label="Lienzo del plano 2D" role="application" viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`} className={`absolute inset-0 h-full w-full touch-none bg-[#faf9f5] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-olive ${navigating ? 'cursor-grabbing' : tool === 'pan' ? 'cursor-grab' : tool === 'select' ? 'cursor-default' : 'cursor-crosshair'}`} onPointerDownCapture={onPointerCapture} onPointerDown={onCanvasDown} onPointerLeave={() => { if (!gesture.current) { setMagnet(null); setCursor(null) } }} onContextMenu={event => { event.preventDefault(); endTrace() }} onPointerMove={onMove} onPointerUp={event => finishGesture(event)} onPointerCancel={event => finishGesture(event, true)}>
           <defs><pattern id="plan-grid-small" width="0.1" height="0.1" patternUnits="userSpaceOnUse"><path d="M .1 0 H 0 V .1" fill="none" stroke="#e3dfd5" strokeWidth="0.006" /></pattern><pattern id="plan-grid" width="1" height="1" patternUnits="userSpaceOnUse"><rect width="1" height="1" fill="url(#plan-grid-small)" /><path d="M 1 0 H 0 V 1" fill="none" stroke="#cec8ba" strokeWidth="0.012" /></pattern></defs>
           <rect x={view.x - view.width} y={view.y - view.height} width={view.width * 3} height={view.height * 3} fill="url(#plan-grid)" />
           <PlanDrawing plan={data} selected={selected} onSelect={onElementDown} dimensions={dimensions} />
-          {anchor && cursor && (tool === 'room' ? <rect x={Math.min(anchor.x, cursor.x)} y={Math.min(anchor.y, cursor.y)} width={Math.abs(cursor.x - anchor.x)} height={Math.abs(cursor.y - anchor.y)} fill="#e5eadf" fillOpacity="0.7" stroke="#d86d4d" strokeWidth="0.06" strokeDasharray=".12 .08" pointerEvents="none" /> : <g pointerEvents="none"><line x1={anchor.x} y1={anchor.y} x2={cursor.x} y2={cursor.y} stroke="#d86d4d" strokeWidth="0.12" strokeDasharray=".15 .08" /><text x={(anchor.x + cursor.x) / 2} y={(anchor.y + cursor.y) / 2 - 0.25} textAnchor="middle" fontSize="0.2" fill="#d86d4d">{distance(anchor, cursor).toFixed(2)} m</text></g>)}
+          {magnet && magnet.type !== 'grid' && !navigating && <g pointerEvents="none"><circle cx={magnet.point.x} cy={magnet.point.y} r={magnet.radius * 1.8} fill="#e5eadf" fillOpacity="0.65" /><circle cx={magnet.point.x} cy={magnet.point.y} r={magnet.radius} fill="white" stroke="#68765d" strokeWidth="0.025" /><text x={magnet.point.x} y={magnet.point.y - magnet.radius * 2.5} textAnchor="middle" fontSize="0.17" fill="#42483e" paintOrder="stroke" stroke="#faf9f5" strokeWidth="0.06">{magnet.type === 'endpoint' ? 'Extremo' : magnet.type === 'intersection' ? 'Intersección' : 'Sobre pared'}</text></g>}
+          {anchor && cursor && distance(anchor, cursor) > 0.05 && (tool === 'room' ? <rect x={Math.min(anchor.x, cursor.x)} y={Math.min(anchor.y, cursor.y)} width={Math.abs(cursor.x - anchor.x)} height={Math.abs(cursor.y - anchor.y)} fill="#e5eadf" fillOpacity="0.7" stroke="#d86d4d" strokeWidth="0.06" strokeDasharray=".12 .08" pointerEvents="none" /> : <g pointerEvents="none"><line x1={anchor.x} y1={anchor.y} x2={cursor.x} y2={cursor.y} stroke="#d86d4d" strokeWidth="0.12" strokeDasharray=".15 .08" /><text x={(anchor.x + cursor.x) / 2} y={(anchor.y + cursor.y) / 2 - 0.25} textAnchor="middle" fontSize="0.2" fill="#d86d4d">{distance(anchor, cursor).toFixed(2)} m</text></g>)}
           {anchor && <circle cx={anchor.x} cy={anchor.y} r="0.08" fill="#d86d4d" pointerEvents="none" />}
         </svg>
         {!data.walls.length && !anchor && <div className="pointer-events-none absolute left-1/2 top-1/2 w-64 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-[#faf9f5]/95 p-6 text-center"><Square size={28} className="mx-auto mb-3 text-olive" /><h2 className="text-lg font-semibold">Dale forma a tu casa</h2><p className="mt-2 text-sm leading-relaxed text-stone-600">Elige Habitación y marca dos esquinas, o empieza dibujando una Pared.</p></div>}
@@ -296,7 +387,7 @@ export default function FloorPlanEditor({ plan, rooms, canEdit, draftKey, onClos
         {data.rooms.length > 0 && <div className="border-t border-stone-100 pt-4"><h3 className="mb-2 text-xs font-semibold text-stone-600">Habitaciones</h3><div className="space-y-1">{data.rooms.map(r => <button key={r.id} onClick={() => { setSelected({ kind: 'room', id: r.id }); changeTool('select') }} className={`flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-2 text-left text-xs ${selected?.id === r.id ? 'bg-olive-light text-olive' : 'hover:bg-stone-50'}`}><span className="truncate">{r.name || 'Sin nombre'}</span><span className="shrink-0 tabular-nums">{roomArea(r).toFixed(1)} m²</span></button>)}</div></div>}
       </aside>
     </div>
-    <footer className="border-t border-stone-200 bg-white px-5 py-2.5 text-xs leading-relaxed text-stone-500">{anchor ? 'Marca el siguiente punto · Esc para terminar' : instructions}{canEdit && <span className="ml-2 hidden xl:inline">Ctrl/Cmd + Z: deshacer · Supr: eliminar</span>}</footer>
+    <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-stone-200 bg-white px-5 py-2.5 text-xs leading-relaxed text-stone-500"><div>{anchor ? 'Marca el siguiente punto.' : instructions}<span className="mt-1 block text-[11px]">Ctrl o espacio + arrastrar: mover vista · Rueda: zoom · Dos dedos: mover y ampliar</span></div>{anchor && <button type="button" className="min-h-11 shrink-0 rounded-lg bg-stone-100 px-3 font-medium text-stone-700 hover:bg-stone-200" onClick={endTrace}>Terminar trazo</button>}</footer>
     <ConfirmDialog open={confirmClose} title="Hay cambios sin guardar" message="Puedes volver al editor para guardarlos. Si sales, conservaremos un borrador en esta sesión del navegador." confirmLabel="Salir del editor" onCancel={() => setConfirmClose(false)} onConfirm={onClose} />
     <ConfirmDialog open={Boolean(pendingImport)} title="Importar distribución" message="El archivo sustituirá el dibujo actual en el editor. Puedes deshacer el cambio antes de guardar." confirmLabel="Importar plano" onCancel={() => setPendingImport(null)} onConfirm={() => { commit(pendingImport.data); setName(pendingImport.name); setView(planBounds(pendingImport.data)); setSelected(null); setAnchor(null); setPendingImport(null) }} />
   </section>

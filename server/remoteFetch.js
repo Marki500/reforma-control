@@ -2,6 +2,7 @@ import dns from 'node:dns/promises'
 import http from 'node:http'
 import https from 'node:https'
 import net from 'node:net'
+import { Agent } from 'undici'
 
 export class RemoteFetchError extends Error {
   constructor(message, status = 400) {
@@ -132,15 +133,45 @@ function requestOnce(url, addresses, { headers, timeoutMs, maxBytes }) {
   })
 }
 
+async function requestWithFetch(url, addresses, { headers, timeoutMs, maxBytes }) {
+  // Keep the validated DNS addresses fixed even when using the native fetch client.
+  // Redirects remain manual so fetchRemote validates every new destination.
+  const dispatcher = new Agent({ connect: { lookup: createPinnedLookup(addresses) } })
+  try {
+    const response = await fetch(url, {
+      headers, dispatcher, redirect: 'manual', signal: AbortSignal.timeout(timeoutMs),
+    })
+    const chunks = []
+    let size = 0
+    for await (const chunk of response.body || []) {
+      size += chunk.length
+      if (size > maxBytes) throw new RemoteFetchError('El contenido remoto supera el tamaño permitido.', 413)
+      chunks.push(Buffer.from(chunk))
+    }
+    return { status: response.status, headers: Object.fromEntries(response.headers), body: Buffer.concat(chunks) }
+  } catch (error) {
+    if (error instanceof RemoteFetchError) throw error
+    throw new RemoteFetchError(
+      ['TimeoutError', 'AbortError'].includes(error?.name)
+        ? 'La página tardó demasiado en responder.'
+        : 'No se pudo conectar con la tienda.',
+      ['TimeoutError', 'AbortError'].includes(error?.name) ? 504 : 502,
+    )
+  } finally {
+    await dispatcher.destroy()
+  }
+}
+
 export async function fetchRemote(value, options = {}) {
   const {
     headers = {}, timeoutMs = 10000, maxBytes = 2 * 1024 * 1024,
-    maxRedirects = 4, allowedContentTypes = [],
+    maxRedirects = 4, allowedContentTypes = [], useNativeFetch = false,
   } = options
   let url = parseRemoteUrl(value)
   for (let redirects = 0; redirects <= maxRedirects; redirects += 1) {
     const addresses = await resolvePublicAddresses(url.hostname)
-    const result = await requestOnce(url, addresses, { headers, timeoutMs, maxBytes })
+    const request = useNativeFetch ? requestWithFetch : requestOnce
+    const result = await request(url, addresses, { headers, timeoutMs, maxBytes })
     if ([301, 302, 303, 307, 308].includes(result.status)) {
       if (redirects === maxRedirects) throw new RemoteFetchError('La URL tiene demasiadas redirecciones.', 502)
       const location = result.headers.location

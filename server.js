@@ -239,6 +239,7 @@ app.post('/api/import-product', requireSession, async (req, res) => {
 
   try {
     const response = await fetchRemote(url, {
+      useNativeFetch: true,
       maxBytes: 5 * 1024 * 1024,
       timeoutMs: 15000,
       allowedContentTypes: ['text/html', 'application/xhtml+xml'],

@@ -12,6 +12,25 @@ export class RemoteFetchError extends Error {
   }
 }
 
+export function remoteResponseDiagnostic(result) {
+  // Inspect bounded content locally; never log the body, cookies or challenge tokens.
+  const body = result.body.subarray(0, 64 * 1024).toString('utf8')
+  const headers = result.headers
+  let protection = null
+  if (/captcha-delivery\.com|geo\.captcha-delivery\.com/i.test(body) || headers['x-datadome']) protection = 'DataDome'
+  else if (headers['cf-mitigated'] === 'challenge' || /\/cdn-cgi\/challenge-platform|cf-chl-/i.test(body)) protection = 'Cloudflare'
+  else if (/perimeterx|px-captcha|humansecurity/i.test(body)) protection = 'HUMAN'
+  else if (/akamai.*(?:challenge|bot)|_incapsula_resource|incapsula incident/i.test(body)) protection = 'Akamai/Imperva'
+  return {
+    upstreamStatus: result.status,
+    contentType: String(headers['content-type'] || '').split(';')[0].slice(0, 80),
+    server: String(headers.server || '').slice(0, 80),
+    bytes: result.body.length,
+    protection,
+    ...(headers['cf-ray'] ? { upstreamRequestId: String(headers['cf-ray']).slice(0, 100) } : {}),
+  }
+}
+
 export function normalizeRemoteUrl(value) {
   let url = String(value || '').trim()
   url = url.replace(/^['"<]+|['">]+$/g, '').replaceAll('\\', '')
@@ -151,12 +170,14 @@ async function requestWithFetch(url, addresses, { headers, timeoutMs, maxBytes }
     return { status: response.status, headers: Object.fromEntries(response.headers), body: Buffer.concat(chunks) }
   } catch (error) {
     if (error instanceof RemoteFetchError) throw error
-    throw new RemoteFetchError(
+    const failure = new RemoteFetchError(
       ['TimeoutError', 'AbortError'].includes(error?.name)
         ? 'La página tardó demasiado en responder.'
         : 'No se pudo conectar con la tienda.',
       ['TimeoutError', 'AbortError'].includes(error?.name) ? 504 : 502,
     )
+    failure.diagnostic = { hostname: url.hostname, transport: 'native-fetch-pinned', phase: 'request', networkCode: String(error?.cause?.code || error?.name || '').slice(0, 80) }
+    throw failure
   } finally {
     await dispatcher.destroy()
   }
@@ -165,13 +186,20 @@ async function requestWithFetch(url, addresses, { headers, timeoutMs, maxBytes }
 export async function fetchRemote(value, options = {}) {
   const {
     headers = {}, timeoutMs = 10000, maxBytes = 2 * 1024 * 1024,
-    maxRedirects = 4, allowedContentTypes = [], useNativeFetch = false,
+    maxRedirects = 4, allowedContentTypes = [], useNativeFetch = false, onDiagnostic,
   } = options
   let url = parseRemoteUrl(value)
   for (let redirects = 0; redirects <= maxRedirects; redirects += 1) {
     const addresses = await resolvePublicAddresses(url.hostname)
     const request = useNativeFetch ? requestWithFetch : requestOnce
+    const startedAt = Date.now()
     const result = await request(url, addresses, { headers, timeoutMs, maxBytes })
+    const diagnostic = {
+      ...remoteResponseDiagnostic(result), hostname: url.hostname,
+      transport: useNativeFetch ? 'native-fetch-pinned' : 'node-http-pinned',
+      redirect: redirects, elapsedMs: Date.now() - startedAt,
+    }
+    onDiagnostic?.(diagnostic)
     if ([301, 302, 303, 307, 308].includes(result.status)) {
       if (redirects === maxRedirects) throw new RemoteFetchError('La URL tiene demasiadas redirecciones.', 502)
       const location = result.headers.location
@@ -183,7 +211,9 @@ export async function fetchRemote(value, options = {}) {
       const message = result.status === 403
         ? 'La tienda bloquea la extracción automática. Introduce los datos manualmente.'
         : `La página respondió con HTTP ${result.status}.`
-      throw new RemoteFetchError(message, result.status >= 500 ? 502 : 422)
+      const error = new RemoteFetchError(message, result.status >= 500 ? 502 : 422)
+      error.diagnostic = diagnostic
+      throw error
     }
     const contentType = String(result.headers['content-type'] || '').split(';')[0].trim().toLowerCase()
     if (allowedContentTypes.length && !allowedContentTypes.some(type => contentType === type || contentType.startsWith(`${type}/`))) {

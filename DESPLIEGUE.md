@@ -1,5 +1,36 @@
 # Corrección de almacenamiento
 
+## Diagnóstico de importación de productos — 25 de octubre de 2026
+
+Reconstruir y desplegar servidor y frontend. En `/api/health` debe aparecer
+`features.product_import: 2` y `product_import.transport: native-fetch-pinned`.
+La ausencia de esos campos significa que esta instrumentación aún no está activa.
+No permite determinar si está desplegada la corrección anterior, que no tenía marcador.
+
+Cada importación registra `[product import:upstream]` y, al fallar,
+`[product import:error]`, con el identificador de diagnóstico mostrado al usuario,
+versión de Node, transporte, HTTP remoto y señales de DataDome/Cloudflare u otras
+protecciones. No se registran el HTML, las cookies ni los tokens del desafío.
+Un 403 no prueba por sí solo que la causa sea la IP del servidor.
+
+Desde Terminal del contenedor de la aplicación en Coolify, ejecutar:
+
+```sh
+node scripts/diagnose-product-import.mjs
+```
+
+El script está incluido en la imagen Docker. Compara los clientes y cabeceras
+con la misma URL pública de Obramat, desde la red y el Node de producción.
+También acepta una URL HTTPS pública de producto como argumento. No usar
+URLs internas ni enlaces con credenciales. Es una herramienta de diagnóstico,
+no un endpoint público. Las variantes antiguas no tienen las protecciones de
+DNS/redirecciones del importador real.
+
+Comprobado localmente con Node 24 y 26: transporte protegido con fetch y
+cabeceras actuales devuelve 200 y la ficha completa; transporte node:http
+devuelve 403 con señales de DataDome. Falta comprobar desde el VPS con Node 22.
+No se ha desplegado esta instrumentación desde esta sesión.
+
 ## Pagos por fases — 21 de octubre de 2026
 
 Aplicar una vez `supabase/migrations/00032_expense_payment_phases.sql` y después

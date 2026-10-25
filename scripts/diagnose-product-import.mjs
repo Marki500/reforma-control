@@ -40,7 +40,7 @@ for (const url of urls) {
         contentType = response.headers.get('content-type')
         body = await response.text()
       } else {
-        const response = await fetchRemote(url, { headers, timeoutMs: 15000, maxBytes: 5 * 1024 * 1024, useNativeFetch: label === 'fixed-pinned-fetch' })
+        const response = await fetchRemote(url, { headers, timeoutMs: 15000, maxBytes: 5 * 1024 * 1024, useNativeFetch: label === 'fixed-pinned-fetch', onDiagnostic: diagnostic => console.log(JSON.stringify({ label, diagnostic })) })
         status = response.status
         contentType = response.contentType
         body = response.body.toString('utf8')
@@ -50,7 +50,7 @@ for (const url of urls) {
         title: body.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim().slice(0, 160),
         elapsedMs: Date.now() - start }))
     } catch (error) {
-      console.log(JSON.stringify({ label, error: error.message, cause: error.cause?.code, elapsedMs: Date.now() - start }))
+      console.log(JSON.stringify({ label, error: error.message, diagnostic: error.diagnostic, cause: error.cause?.code, elapsedMs: Date.now() - start }))
     }
   }
 }

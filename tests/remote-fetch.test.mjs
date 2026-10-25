@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import dns from 'node:dns/promises'
 import { test } from 'node:test'
-import { canonicalizeRemoteUrl, createPinnedLookup, fetchRemote, isPublicIp, parseRemoteUrl } from '../server/remoteFetch.js'
+import { canonicalizeRemoteUrl, createPinnedLookup, fetchRemote, isPublicIp, parseRemoteUrl, remoteResponseDiagnostic } from '../server/remoteFetch.js'
 
 test('native product transport preserves manual redirects and destroys its dispatcher', async t => {
   t.mock.method(dns, 'lookup', async () => [{ address: '1.1.1.1', family: 4 }])
@@ -52,4 +52,28 @@ test('URL validation and pinned DNS lookup remain in effect', async () => {
   lookup('shop.example', { all: true }, (error, result) => { assert.ifError(error); assert.deepEqual(result, addresses) })
   lookup('shop.example', {}, (error, ip, family) => { assert.ifError(error); assert.equal(ip, '1.1.1.1'); assert.equal(family, 4) })
   await assert.rejects(fetchRemote('http://127.0.0.1/secret', { useNativeFetch: true }), /red interna/)
+})
+
+test('diagnostics identify protection without exposing response bodies, cookies or tokens', () => {
+  const result = { status: 403, headers: { 'content-type': 'text/html; charset=utf-8', 'set-cookie': 'secret-cookie', 'x-datadome': 'secret-token' }, body: Buffer.from('<script src="https://geo.captcha-delivery.com/captcha/?token=private"></script>') }
+  const diagnostic = remoteResponseDiagnostic(result)
+  assert.equal(diagnostic.upstreamStatus, 403)
+  assert.equal(diagnostic.protection, 'DataDome')
+  assert.equal(diagnostic.contentType, 'text/html')
+  assert.doesNotMatch(JSON.stringify(diagnostic), /secret|private|captcha-delivery/)
+  assert.equal(remoteResponseDiagnostic({ status: 403, headers: { 'cf-mitigated': 'challenge' }, body: Buffer.from('') }).protection, 'Cloudflare')
+  assert.equal(remoteResponseDiagnostic({ status: 403, headers: {}, body: Buffer.from('Forbidden') }).protection, null)
+})
+
+test('blocked upstream diagnostics reach logs and error consistently', async t => {
+  t.mock.method(dns, 'lookup', async () => [{ address: '1.1.1.1', family: 4 }])
+  t.mock.method(globalThis, 'fetch', async () => new Response('<script src="https://geo.captcha-delivery.com/captcha/"></script>', { status: 403 }))
+  const events = []
+  await assert.rejects(fetchRemote('https://shop.example/product', { useNativeFetch: true, onDiagnostic: event => events.push(event) }), error => {
+    assert.equal(error.diagnostic.protection, 'DataDome')
+    assert.equal(error.diagnostic.transport, 'native-fetch-pinned')
+    assert.equal(error.diagnostic.upstreamStatus, 403)
+    assert.deepEqual(error.diagnostic, events[0])
+    return true
+  })
 })

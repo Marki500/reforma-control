@@ -111,7 +111,8 @@ app.get('/api/health', (_req, res) => {
   res.status(200).json({
     status: 'ok',
     release: 'pdf-vision-v1',
-    features: { ai_pdf_vision: 1, ai_extraction_validation: 1, ai_invoice_async: 1, ai_budget_async: 6, ai_usage_limits: 1, project_invitation_email: 1, project_comments: 1 },
+    features: { ai_pdf_vision: 1, ai_extraction_validation: 1, ai_invoice_async: 1, ai_budget_async: 6, ai_usage_limits: 1, project_invitation_email: 1, project_comments: 1, product_import: 2 },
+    product_import: { transport: 'native-fetch-pinned', diagnostics: 1 },
     ai: { provider: aiProvider, model: selectedModel, configured, free_only: aiFreeOnly, ...(aiProvider === 'groq' ? { fallback: openRouterApiKey ? 'openrouter/free' : null } : {}) },
     mail: { provider: 'mailjet', configured: Boolean(mailjetApiKey && mailjetSecretKey && appPublicUrl) },
   })
@@ -225,6 +226,8 @@ app.post('/api/send-comment-notifications', requireSession, async (req, res) => 
 })
 
 app.post('/api/import-product', requireSession, async (req, res) => {
+  const startedAt = Date.now()
+  const diagnostic = { requestId: req.requestId, importerVersion: 2, node: process.version, platform: process.platform }
   let url = normalizeRemoteUrl(req.body?.url)
 
   if (!url) {
@@ -240,6 +243,7 @@ app.post('/api/import-product', requireSession, async (req, res) => {
   try {
     const response = await fetchRemote(url, {
       useNativeFetch: true,
+      onDiagnostic: upstream => console.info('[product import:upstream]', { ...diagnostic, ...upstream }),
       maxBytes: 5 * 1024 * 1024,
       timeoutMs: 15000,
       allowedContentTypes: ['text/html', 'application/xhtml+xml'],
@@ -416,8 +420,16 @@ app.post('/api/import-product', requireSession, async (req, res) => {
 
     res.json(product)
   } catch (error) {
+    console.error('[product import:error]', { ...diagnostic, ...error?.diagnostic, durationMs: Date.now() - startedAt, message: error?.message || 'Unknown error' })
+    const blocked = error?.diagnostic?.upstreamStatus === 403
+    const protection = error?.diagnostic?.protection
     res.status(error instanceof RemoteFetchError ? error.status : 500).json({
-      error: error instanceof Error ? error.message : 'Error al extraer datos',
+      error: blocked && protection
+        ? `La tienda ha rechazado la petición automática mediante ${protection}. Puedes importar pegando el HTML de la ficha.`
+        : error instanceof Error ? error.message : 'Error al extraer datos',
+      code: blocked ? 'STORE_ACCESS_DENIED' : 'PRODUCT_IMPORT_FAILED',
+      request_id: req.requestId,
+      diagnostic: { importer_version: 2, transport: 'native-fetch-pinned', upstream_status: error?.diagnostic?.upstreamStatus || null, protection: protection || null },
     })
   }
 })

@@ -123,12 +123,13 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
         )}
 
         <details className="rounded-xl border border-stone-200 p-3" open={error ? true : undefined}>
-          <summary className="cursor-pointer text-sm font-medium text-stone-700">Importar copiando la ficha de la tienda</summary>
+          <summary className="cursor-pointer text-sm font-medium text-stone-700">Importar pegando texto o HTML</summary>
           <p className="mt-3 text-sm text-stone-500">
-            Abre el enlace en tu navegador, selecciona la ficha del producto (nombre, precio e imagen), copia y pega aquí.
-            También puedes copiar toda la página con Ctrl+A y Ctrl+C. Mantén la URL del producto en el campo superior.
+            Pega el texto de la ficha o su código HTML. Para incluir la foto, en la tienda haz clic derecho sobre la ficha,
+            elige «Inspeccionar» y copia el contenedor que incluya la foto, el nombre y el precio con «Copiar → Copiar outerHTML».
+            Mantén la URL del producto en el campo superior.
           </p>
-          <label className="mt-3 block text-sm text-stone-700" htmlFor="product-clipboard">Contenido de la ficha</label>
+          <label className="mt-3 block text-sm text-stone-700" htmlFor="product-clipboard">Contenido de la ficha (texto o HTML)</label>
           <textarea
             id="product-clipboard"
             className="mt-1 w-full rounded-lg border border-stone-300 p-3 text-sm"
@@ -140,7 +141,7 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
               if (!text) return
               e.preventDefault()
               setPastedText(text)
-              setPastedDetails(clipboardHtmlDetails(e.clipboardData.getData('text/html'), normalizeProductUrl(url)))
+              setPastedDetails(/<(?:div|html|body|h1|img|picture|section|meta)\b/i.test(text) ? {} : clipboardHtmlDetails(e.clipboardData.getData('text/html'), normalizeProductUrl(url)))
               setResult(null)
             }}
           />

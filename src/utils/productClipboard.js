@@ -3,6 +3,10 @@ import { normalizeProductUrl } from './productUrl.js'
 export function productFromClipboard(text, value, details = {}) {
   const url = new URL(normalizeProductUrl(value))
   if (!['https:', 'http:'].includes(url.protocol)) throw new Error('Introduce una URL http o https del producto.')
+  if (/<(?:div|html|body|h1|img|picture|section|meta)\b/i.test(text)) {
+    details = clipboardHtmlDetails(text, url.href)
+    text = details.text
+  }
   const lines = String(text).split(/\r?\n/).map(line => line.trim()).filter(Boolean)
   if (!lines.length) throw new Error('Copia y pega primero el contenido de la ficha del producto.')
   const slug = url.pathname.split('/').pop().replace(/\.html?$/i, '').replace(/-\d+$/, '').replaceAll('-', ' ')
@@ -30,14 +34,28 @@ export function productFromClipboard(text, value, details = {}) {
 // Read inert clipboard HTML without inserting any markup in the document.
 export function clipboardHtmlDetails(html, value) {
   if (!html) return {}
-  const doc = new DOMParser().parseFromString(html, 'text/html')
-  const name = doc.querySelector('h1')?.textContent?.trim() || ''
+  // A template keeps scripts, images and other resources inert while parsing.
+  const template = document.createElement('template')
+  template.innerHTML = html
+  const doc = template.content
+  doc.querySelectorAll('script, style, noscript, iframe, svg').forEach(node => node.remove())
+  const heading = doc.querySelector('h1')?.cloneNode(true)
+  heading?.querySelectorAll('a, .mu-accessibility-hidden, [aria-hidden="true"]').forEach(node => node.remove())
+  const name = heading?.textContent?.replace(/\s+/g, ' ').trim() || ''
   const images = [...doc.querySelectorAll('img')]
   const image = images.find(img => name && img.alt?.trim().toLowerCase().startsWith(name.toLowerCase()))
+    || doc.querySelector('#product-carousel img, [itemprop="image"], .product-image img')
   let imageUrl = ''
-  try {
-    const parsed = new URL(image?.getAttribute('src') || image?.getAttribute('data-src') || '', value)
-    if (image && ['http:', 'https:'].includes(parsed.protocol)) imageUrl = parsed.href
-  } catch {}
-  return { name, image: imageUrl }
+  for (const source of [image?.getAttribute('data-src'), image?.getAttribute('src'), doc.querySelector('meta[property="og:image"]')?.getAttribute('content')]) {
+    if (!source) continue
+    try {
+      const parsed = new URL(source, value)
+      if (['http:', 'https:'].includes(parsed.protocol)) { imageUrl = parsed.href; break }
+    } catch {}
+  }
+  // Separate blocks while preserving adjacent spans inside prices.
+  doc.querySelectorAll('br').forEach(node => node.replaceWith('\n'))
+  doc.querySelectorAll('h1, h2, h3, p, div, li, tr').forEach(node => node.append('\n'))
+  const text = doc.textContent.replace(/[^\S\n]+/g, ' ')
+  return { name, image: imageUrl, text }
 }

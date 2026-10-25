@@ -5,12 +5,25 @@ import { Input } from '../ui/Input'
 import { Link, Loader2, AlertCircle, CheckCircle } from 'lucide-react'
 import { authenticatedRequest } from '../../services/uploadService'
 import { normalizeProductUrl } from '../../utils/productUrl'
+import { clipboardHtmlDetails, productFromClipboard } from '../../utils/productClipboard'
 
 export default function ImportFromUrlModal({ open, onClose, onImport }) {
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
+  const [pastedText, setPastedText] = useState('')
+  const [pastedDetails, setPastedDetails] = useState({})
+
+  function handleExtractPaste() {
+    try {
+      const data = productFromClipboard(pastedText, url, pastedDetails)
+      setResult(data)
+      setError(null)
+    } catch (err) {
+      setError(err.message || 'Revisa la URL y el contenido pegado.')
+    }
+  }
 
   async function handleExtract() {
     if (!url) return
@@ -52,6 +65,8 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
     setResult(null)
     setError(null)
     setLoading(false)
+    setPastedText('')
+    setPastedDetails({})
   }
 
   return (
@@ -107,6 +122,32 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
           </div>
         )}
 
+        <details className="rounded-xl border border-stone-200 p-3" open={error ? true : undefined}>
+          <summary className="cursor-pointer text-sm font-medium text-stone-700">Importar copiando la ficha de la tienda</summary>
+          <p className="mt-3 text-sm text-stone-500">
+            Abre el enlace en tu navegador, selecciona la ficha del producto (nombre, precio e imagen), copia y pega aquí.
+            También puedes copiar toda la página con Ctrl+A y Ctrl+C. Mantén la URL del producto en el campo superior.
+          </p>
+          <label className="mt-3 block text-sm text-stone-700" htmlFor="product-clipboard">Contenido de la ficha</label>
+          <textarea
+            id="product-clipboard"
+            className="mt-1 w-full rounded-lg border border-stone-300 p-3 text-sm"
+            rows={5}
+            value={pastedText}
+            onChange={e => { setPastedText(e.target.value); setPastedDetails({}); setResult(null) }}
+            onPaste={e => {
+              const text = e.clipboardData.getData('text/plain')
+              if (!text) return
+              e.preventDefault()
+              setPastedText(text)
+              setPastedDetails(clipboardHtmlDetails(e.clipboardData.getData('text/html'), normalizeProductUrl(url)))
+              setResult(null)
+            }}
+          />
+          <p className="mb-3 text-xs text-stone-500">Revisa el resultado antes de guardar. La imagen se recupera si está incluida en la selección; los campos que falten se pueden completar después.</p>
+          <Button variant="secondary" onClick={handleExtractPaste} disabled={loading || !url || !pastedText.trim()}>Extraer del contenido pegado</Button>
+        </details>
+
         {result && (
           <div className="space-y-3 rounded-xl bg-olive-light p-4">
             <div className="flex items-center gap-2">
@@ -134,6 +175,8 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
                 <span className="font-medium">Tienda:</span> {result.storeName}
               </p>
             )}
+
+            {result.image && <img src={result.image} alt={result.name || 'Imagen del producto'} referrerPolicy="no-referrer" className="h-24 w-24 rounded-lg object-contain" />}
 
             <div className="flex gap-2 pt-2">
               <Button variant="olive" onClick={handleUseData}>

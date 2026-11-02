@@ -6,6 +6,7 @@ RUN npm ci
 COPY . .
 ARG VITE_SUPABASE_URL=https://api-reforma.noxumlab.com
 ARG VITE_SUPABASE_ANON_KEY
+ARG VITE_TURNSTILE_SITE_KEY
 RUN npm run build
 
 FROM node:22-alpine

@@ -1,3 +1,4 @@
+import { authErrorMessage } from '../utils/authErrors'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../services/supabaseClient'
@@ -17,10 +18,16 @@ export default function ResetPassword() {
     if (password.length < 8) return setError('La contraseña debe tener al menos 8 caracteres.')
     if (password !== confirm) return setError('Las contraseñas no coinciden.')
     setBusy(true)
-    const { error: updateError } = await supabase.auth.updateUser({ password })
-    if (updateError) { setError(updateError.message); setBusy(false); return }
-    await supabase.auth.signOut()
-    navigate('/login', { replace: true, state: { passwordUpdated: true } })
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ password })
+      if (updateError) throw updateError
+      await supabase.auth.signOut()
+      navigate('/login', { replace: true, state: { passwordUpdated: true } })
+    } catch (error) {
+      setError(authErrorMessage(error))
+    } finally {
+      setBusy(false)
+    }
   }
 
   return <main className="safe-area-page grid min-h-[100dvh] place-items-center bg-stone-100 px-5"><div className="w-full max-w-md"><BrandLockup className="mb-8" /><form onSubmit={submit} className="space-y-5 rounded-3xl bg-white p-7 shadow-[0_18px_50px_rgba(37,42,35,.08)]"><div><p className="text-xs font-semibold uppercase tracking-[.16em] text-terracotta">Recuperar acceso</p><h1 className="mt-2 font-display text-3xl font-bold tracking-[-.035em] text-stone-900">Crea una nueva contraseña</h1></div>{error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}<Input label="Nueva contraseña" type="password" value={password} onChange={event => setPassword(event.target.value)} minLength={8} required autoFocus /><Input label="Repetir contraseña" type="password" value={confirm} onChange={event => setConfirm(event.target.value)} minLength={8} required /><Button type="submit" className="w-full" disabled={busy}>{busy ? 'Guardando…' : 'Guardar contraseña'}</Button></form></div></main>

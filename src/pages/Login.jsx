@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, MailCheck, RefreshCw } from 'lucide-react'
+import Captcha, { captchaSiteKey } from '../components/auth/Captcha'
+import { authErrorMessage } from '../utils/authErrors'
 import { supabase } from '../services/supabaseClient'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
@@ -13,6 +15,9 @@ export default function Login() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [captchaToken, setCaptchaToken] = useState('')
+  const [captchaAttempt, setCaptchaAttempt] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [mode, setMode] = useState('login')
@@ -23,6 +28,11 @@ export default function Login() {
     if (inviteToken) localStorage.setItem('nivel_pending_invite', inviteToken)
   }, [inviteToken])
 
+  useEffect(() => {
+    setConfirmPassword('')
+    setCaptchaToken('')
+  }, [mode])
+
   const confirmationRedirectTo = inviteToken
     ? `${window.location.origin}/invite/${encodeURIComponent(inviteToken)}`
     : `${window.location.origin}/`
@@ -32,28 +42,37 @@ export default function Login() {
     setError(null)
     setLoading(true)
 
+    let submitted = false
     try {
+      if (captchaSiteKey && !captchaToken) throw new Error('Completa la verificación de seguridad.')
       if (mode === 'recover') {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/reset-password` })
+        submitted = true
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/reset-password`, captchaToken: captchaToken || undefined })
         if (error) throw error
         setNotice('Te hemos enviado un enlace para crear una nueva contraseña.')
       } else if (mode === 'login') {
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
+        submitted = true
+        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password, options: { captchaToken: captchaToken || undefined } })
         if (error) throw error
       } else {
         if (!name.trim()) throw new Error('Introduce tu nombre de usuario.')
+        if (password.length < 8) throw new Error('La contraseña debe tener al menos 8 caracteres.')
+        if (password !== confirmPassword) throw new Error('Las contraseñas no coinciden.')
+        submitted = true
         const { error } = await supabase.auth.signUp({
-          email,
+          email: email.trim(),
           password,
-          options: { emailRedirectTo: confirmationRedirectTo, data: { full_name: name.trim() } },
+          options: { emailRedirectTo: confirmationRedirectTo, captchaToken: captchaToken || undefined, data: { full_name: name.trim() } },
         })
         if (error) throw error
         setPendingEmail(email.trim())
         setPassword('')
+        setConfirmPassword('')
       }
     } catch (err) {
-      setError(err.message)
+      setError(authErrorMessage(err))
     } finally {
+      if (submitted) { setCaptchaToken(''); setCaptchaAttempt(value => value + 1) }
       setLoading(false)
     }
   }
@@ -62,13 +81,17 @@ export default function Login() {
     setLoading(true)
     setError(null)
     setNotice('')
+    let submitted = false
     try {
-      const { error } = await supabase.auth.resend({ type: 'signup', email: pendingEmail, options: { emailRedirectTo: confirmationRedirectTo } })
+      if (captchaSiteKey && !captchaToken) throw new Error('Completa la verificación de seguridad.')
+      submitted = true
+      const { error } = await supabase.auth.resend({ type: 'signup', email: pendingEmail, options: { emailRedirectTo: confirmationRedirectTo, captchaToken: captchaToken || undefined } })
       if (error) throw error
       setNotice('Correo reenviado. Puede tardar unos minutos en llegar.')
     } catch (err) {
-      setError(err.message)
+      setError(authErrorMessage(err))
     } finally {
+      if (submitted) { setCaptchaToken(''); setCaptchaAttempt(value => value + 1) }
       setLoading(false)
     }
   }
@@ -120,8 +143,9 @@ export default function Login() {
               {inviteToken && <p className="rounded-xl bg-terracotta-light px-4 py-3 text-sm leading-relaxed text-stone-700">Después de confirmar volverás a NIVEL para aceptar la invitación a la reforma.</p>}
               {error && <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>}
               {notice && <p role="status" className="rounded-xl bg-olive-light px-4 py-3 text-sm text-olive">{notice}</p>}
+              <Captcha key={`resend-${captchaAttempt}`} onToken={setCaptchaToken} />
               <div className="grid gap-2.5">
-                <Button type="button" variant="olive" className="w-full" onClick={resendConfirmation} disabled={loading}><RefreshCw size={16} className={loading ? 'animate-spin' : ''} />{loading ? 'Reenviando…' : 'Reenviar correo'}</Button>
+                <Button type="button" variant="olive" className="w-full" onClick={resendConfirmation} disabled={loading || Boolean(captchaSiteKey && !captchaToken)}><RefreshCw size={16} className={loading ? 'animate-spin' : ''} />{loading ? 'Reenviando…' : 'Reenviar correo'}</Button>
                 <Button type="button" variant="ghost" className="w-full" onClick={backToLogin}><ArrowLeft size={16} /> Volver a iniciar sesión</Button>
               </div>
             </div>
@@ -149,17 +173,34 @@ export default function Login() {
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+              minLength={mode === 'register' ? 8 : undefined}
               required
             />}
+            {mode === 'register' && <>
+              <p className="text-xs text-stone-500">Usa al menos 8 caracteres.</p>
+              <Input
+                label="Repetir contraseña"
+                aria-label="Repetir contraseña"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Repite tu contraseña"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                minLength={8}
+                required
+              />
+            </>}
 
             {error && (
-              <p className={`text-sm ${error.includes('Revisa') ? 'text-olive' : 'text-red-500'}`}>
+              <p role="alert" className={`text-sm ${error.includes('Revisa') ? 'text-olive' : 'text-red-500'}`}>
                 {error}
               </p>
             )}
             {notice && <p role="status" className="rounded-xl bg-olive-light p-3 text-sm text-olive">{notice}</p>}
 
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Captcha key={`${mode}-${captchaAttempt}`} onToken={setCaptchaToken} />
+            <Button type="submit" className="w-full" disabled={loading || Boolean(captchaSiteKey && !captchaToken)}>
               {loading ? 'Procesando…' : mode === 'login' ? 'Entrar' : mode === 'recover' ? 'Enviar enlace' : 'Crear cuenta'}
             </Button>
 

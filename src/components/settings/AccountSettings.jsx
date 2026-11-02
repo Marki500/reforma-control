@@ -1,3 +1,4 @@
+import { authErrorMessage } from '../../utils/authErrors'
 import { useEffect, useState } from 'react'
 import { KeyRound, LogOut, Mail, MonitorSmartphone, Save, UserRound } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -25,7 +26,7 @@ export default function AccountSettings() {
   async function run(key, operation, success) {
     setBusy(key); setError(''); setNotice('')
     try { await operation(); setNotice(success) }
-    catch (err) { setError(err.message || 'No se pudo guardar el cambio.') }
+    catch (err) { setError(authErrorMessage(err)) }
     finally { setBusy('') }
   }
 

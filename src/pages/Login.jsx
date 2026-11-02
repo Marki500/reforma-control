@@ -10,6 +10,7 @@ export default function Login() {
   const [searchParams] = useSearchParams()
   const location = useLocation()
   const inviteToken = searchParams.get('invite')
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -40,7 +41,12 @@ export default function Login() {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
       } else {
-        const { error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: confirmationRedirectTo } })
+        if (!name.trim()) throw new Error('Introduce tu nombre de usuario.')
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: confirmationRedirectTo, data: { full_name: name.trim() } },
+        })
         if (error) throw error
         setPendingEmail(email.trim())
         setPassword('')
@@ -120,6 +126,15 @@ export default function Login() {
               </div>
             </div>
           </section> : <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl bg-white p-6 shadow-[0_18px_50px_rgba(37,42,35,0.08)] ring-1 ring-stone-200/70 sm:p-7">
+            {mode === 'register' && <Input
+              label="Nombre de usuario"
+              autoComplete="nickname"
+              placeholder="Cómo quieres aparecer"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={80}
+              required
+            />}
             <Input
               label="Email"
               type="email"

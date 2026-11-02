@@ -38,11 +38,8 @@
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.5.0",
     "remark-gfm": "^4.0.1",
-<<<<<<< HEAD
-    "three": "^0.186.1"
-=======
+    "three": "^0.186.1",
     "undici": "^7.30.0"
->>>>>>> 56c2029f15096df1b13b973fb3024ede5dc06b02
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.4",

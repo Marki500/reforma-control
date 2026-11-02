@@ -46,6 +46,8 @@ test('a supplier, warning, quantity or tax rate alone is never a successful extr
     assert.throws(() => assertReadableAnalysis(empty, kind), { code: 'AI_EXTRACTION_INCOMPLETE' })
     assert.equal(analysisProblem({ ...empty, total_amount: 121 }, kind), '')
     assert.equal(analysisProblem({ ...empty, line_items: [{ unit_price: 100 }] }, kind), '')
-    assert.ok(analysisProblem({ ...empty, [`is_${kind}`]: false, total_amount: 121 }, kind))
+    assert.equal(analysisProblem({ ...empty, [`is_${kind}`]: false, total_amount: 121 }, kind), '')
+    assert.ok(analysisProblem({ ...empty, [`is_${kind}`]: false }, kind))
+    assert.ok(analysisProblem({ total_amount: 121 }, kind))
   }
 })

@@ -21,7 +21,7 @@ for (const provider of ['openrouter', 'gemini']) test(`${provider}: empty text e
     if (req.url === '/chat/completions' || req.url.endsWith(':generateContent')) {
       const body = JSON.parse(Buffer.concat(chunks)); requests.push(body)
       const vision = provider === 'gemini' ? body.contents[0].parts.some(part => part.inline_data) : body.messages[0].content.some(part => part.type === 'image_url')
-      const draft = { is_budget: true, supplier_name: 'Proveedor ejemplo', total_amount: vision && !failAll ? 121 : null, line_items: [], warnings: ['Prueba sintetica'] }
+      const draft = { is_budget: !vision, supplier_name: 'Proveedor ejemplo', total_amount: vision && !failAll ? 121 : null, line_items: [], warnings: ['Prueba sintetica'] }
       return res.end(JSON.stringify(provider === 'gemini' ? { candidates: [{ content: { parts: [{ text: JSON.stringify(draft) }] } }] } : { choices: [{ message: { content: JSON.stringify(draft) } }] }))
     }
     res.writeHead(404); res.end('{}')
@@ -107,6 +107,8 @@ for (const provider of ['openrouter', 'gemini']) test(`${provider}: empty text e
       assert.equal(status, 200, JSON.stringify(result))
       assert.equal(result.draft.total_amount, 121)
       assert.equal(result.reading_mode, 'vision')
+      assert.equal(result.draft.is_budget, false)
+      assert.ok(result.draft.warnings.some(warning => warning.includes('no se ha identificado como presupuesto')))
       const request = requests.at(-1)
       if (provider === 'gemini') {
         const image = request.contents[0].parts.find(part => part.inline_data)

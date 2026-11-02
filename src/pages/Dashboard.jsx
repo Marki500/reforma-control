@@ -62,6 +62,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [expenseSummary, setExpenseSummary] = useState(null)
   const [expenseError, setExpenseError] = useState('')
+  const [acceptedTotal, setAcceptedTotal] = useState(null)
   const [materialsLoaded, setMaterialsLoaded] = useState(false)
 
   const loadDashboard = async () => {
@@ -102,6 +103,9 @@ export default function Dashboard() {
       } else {
         setExpenseSummary(recordedExpensesSummary(expenses || []))
       }
+
+      const { data: accepted, error: acceptedError } = await supabase.from('budget_pdfs').select('total_amount').eq('status', 'Aceptado')
+      setAcceptedTotal(acceptedError ? null : (accepted || []).reduce((sum, item) => sum + (Number(item.total_amount) || 0), 0))
 
       // Group spending by category (only counted materials)
       const byCategory = {}
@@ -267,13 +271,13 @@ export default function Dashboard() {
 
       <section aria-label="Resumen económico" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <div className="rounded-2xl bg-stone-900 p-4 text-white sm:p-5">
-          <p className="text-xs font-medium text-white/75">Estimación de materiales</p>
-          <p className="mt-2 text-2xl font-bold tabular-nums">{materialsLoaded ? formatCurrency(stats.totalCost) : 'No disponible'}</p>
-          <p className="mt-2 text-xs leading-relaxed text-white/70">Precios × cantidades incluidos en totales. No incluye toda la obra.</p>
+          <p className="text-xs font-medium text-white/75">Presupuestos aceptados</p>
+          <p className="mt-2 text-2xl font-bold tabular-nums">{acceptedTotal !== null ? formatCurrency(acceptedTotal) : 'No disponible'}</p>
+          <p className="mt-2 text-xs leading-relaxed text-white/70">Total de presupuestos marcados como aceptados.</p>
         </div>
         {expenseSummary ? <>
           {[
-            { label: 'Gastos comprometidos', value: expenseSummary.committed, detail: 'Importes registrados en Gastos, incluidos presupuestos aceptados.' },
+            { label: 'Gastos registrados', value: expenseSummary.committed, detail: 'Incluye presupuestos aceptados y compras añadidas en Gastos.' },
             { label: 'Pagado', value: expenseSummary.paid, detail: 'Pagos registrados en Gastos.' },
             { label: 'Pendiente de pago', value: expenseSummary.pending, detail: 'Saldo pendiente de cada gasto registrado.' },
           ].map(item => <button key={item.label} type="button" onClick={() => navigate('/gastos')} className="rounded-2xl bg-white p-4 text-left shadow-sm sm:p-5 transition hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-olive">
@@ -283,7 +287,7 @@ export default function Dashboard() {
           </button>)}
         </> : <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900 sm:col-span-1 xl:col-span-3">{expenseError || 'Gastos y pagos no disponibles.'}<button type="button" onClick={loadDashboard} className="ml-2 font-semibold underline">Reintentar</button></div>}
       </section>
-      <p className="!mt-3 text-xs leading-relaxed text-stone-600">La estimación de materiales y los gastos son registros independientes: no se suman para evitar contar dos veces una misma compra.</p>
+      <p className="!mt-3 text-xs leading-relaxed text-stone-600">Los presupuestos aceptados ya están incluidos en los gastos registrados: no sumes ambas tarjetas. Los pagos y el pendiente corresponden a los gastos registrados.</p>
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-6">

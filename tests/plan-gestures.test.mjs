@@ -5,6 +5,8 @@ import { runInNewContext } from 'node:vm'
 import { transform } from 'esbuild'
 import * as geometry from '../src/utils/floorPlan.js'
 import * as navigation from '../src/utils/planNavigation.js'
+import * as editing from '../src/utils/planEditing.js'
+import * as furniture from '../src/utils/planFurniture.js'
 
 // Execute the actual component handlers with a minimal hook/element runtime.
 // No DOM, browser, provider or duplicate implementation of the gesture logic.
@@ -32,7 +34,7 @@ function editor() {
     sessionStorage: { getItem: () => null },
     DOMPoint: class { constructor(x, y) { this.x = x; this.y = y } matrixTransform(m) { return { x: this.x * m.scale, y: this.y * m.scale } } },
     requestAnimationFrame: fn => { frames.set(++frameId, fn); return frameId }, cancelAnimationFrame: id => frames.delete(id),
-    require: name => name === 'react' ? react : name.includes('utils/floorPlan') ? geometry : name.includes('utils/planNavigation') ? navigation : name.endsWith('/PlanDrawing') ? { default: drawing, __esModule: true } : new Proxy({}, { get: () => () => null }),
+    require: name => name === 'react' ? react : name.includes('utils/floorPlan') ? geometry : name.includes('utils/planNavigation') ? navigation : name.includes('utils/planEditing') ? editing : name.includes('utils/planFurniture') ? furniture : name.endsWith('/PlanDrawing') ? { default: drawing, __esModule: true } : new Proxy({}, { get: () => () => null }),
   })
   const props = { plan: { id: 'test', name: 'Test', plan_data: geometry.examplePlan() }, rooms: [], canEdit: true, draftKey: 'test' }
   function all(node = tree) { return !node || typeof node !== 'object' ? [] : [node, ...node.children.flatMap(child => all(child))] }

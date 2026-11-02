@@ -18,3 +18,11 @@ test('expense totals and filters combine correctly', () => {
   assert.deepEqual(expenseTotals(expenses), { budgeted: 1500, actual: 1570, paid: 850 })
   assert.deepEqual(filterExpenses(expenses, { search: 'segundo', status: 'Parcial', category: 'Mano de obra', room_id: 'salon' }).map(item => item.title), ['Electricista'])
 })
+
+test('payer filters keep assigned and unassigned expenses separate', () => {
+  const items = expenses.map((expense, index) => ({ ...expense, payer_user_id: index === 0 ? 'user-a' : index === 1 ? 'user-b' : null }))
+  assert.deepEqual(filterExpenses(items, { search: '', payer_user_id: 'user-a' }).map(item => item.title), ['Azulejos'])
+  assert.deepEqual(filterExpenses(items, { search: '', payer_user_id: 'unassigned' }).map(item => item.title), ['Licencia'])
+  assert.equal(filterExpenses(items, { search: '', payer_user_id: '' }).length, 3)
+  assert.equal(filterExpenses(items, { search: '', payer_user_id: 'user-a', status: 'Pendiente' }).length, 0)
+})

@@ -22,6 +22,7 @@ export function filterExpenses(expenses, filters) {
     return (!search || haystack.includes(search))
       && (!filters.status || expenseStatus(expense) === filters.status)
       && (!filters.category || expense.category === filters.category)
+      && (!filters.payer_user_id || (filters.payer_user_id === 'unassigned' ? !expense.payer_user_id : expense.payer_user_id === filters.payer_user_id))
       && (!filters.room_id || expense.room_id === filters.room_id)
   })
 }

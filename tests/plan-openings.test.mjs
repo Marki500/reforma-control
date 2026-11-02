@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { runInNewContext } from 'node:vm'
 import { transform } from 'esbuild'
 import * as geometry from '../src/utils/floorPlan.js'
+import * as furniture from '../src/utils/planFurniture.js'
 
 test('wall dimensions can fix A, B or the center while preserving connected rooms', () => {
   for (const fixed of ['start', 'end', 'center']) {
@@ -58,7 +59,7 @@ const source = await readFile(new URL('../src/components/floorplan/PlanDrawing.j
 const { code } = await transform(source, { loader: 'jsx', format: 'cjs', jsxFactory: 'element', jsxFragment: 'Fragment' })
 function renderOpening(opening) {
   const module = { exports: {} }
-  runInNewContext(code, { module, exports: module.exports, Fragment: 'fragment', require: () => geometry, element: (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity) }) })
+  runInNewContext(code, { module, exports: module.exports, Fragment: 'fragment', require: name => name.includes('planFurniture') ? furniture : geometry, element: (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity) }) })
   const tree = module.exports.default({ plan: { walls: [{ id: 'wall', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, thickness: 0.15 }], rooms: [], openings: [{ id: 'opening', wallId: 'wall', offset: 1, width: 1.2, ...opening }] } })
   const all = node => !node || typeof node !== 'object' ? [] : [node, ...node.children.flatMap(all)]
   return all(tree)

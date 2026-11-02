@@ -13,20 +13,23 @@ import { recordedExpensesSummary } from '../utils/dashboardFinance'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 
+import { getWorkspaceMembers } from '../services/workspaceService'
+
 const categories = ['Material', 'Mano de obra', 'Transporte', 'Licencia', 'Otro']
 const statuses = ['Pendiente', 'Parcial', 'Pagado']
-const empty = { payment_phases: [], payment_plan_version: 0, title: '', category: 'Material', vendor: '', supplier_id: '', budgeted_amount: '', amount: '', paid_amount: '', expense_date: '', due_date: '', room_id: '', notes: '' }
+const empty = { payer_user_id: '', payment_phases: [], payment_plan_version: 0, title: '', category: 'Material', vendor: '', supplier_id: '', budgeted_amount: '', amount: '', paid_amount: '', expense_date: '', due_date: '', room_id: '', notes: '' }
 const fieldClass = 'mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm'
 
 export default function Expenses() {
   const [searchParams] = useSearchParams()
   const [expenses, setExpenses] = useState([])
+  const [members, setMembers] = useState([])
   const [rooms, setRooms] = useState([])
   const [suppliers, setSuppliers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
-  const [filters, setFilters] = useState({ search: '', status: '', category: '', room_id: '' })
+  const [filters, setFilters] = useState({ search: '', status: '', category: '', room_id: '', payer_user_id: '' })
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [deleting, setDeleting] = useState(null)
@@ -36,8 +39,8 @@ export default function Expenses() {
   async function load() {
     setLoading(true); setError('')
     try {
-      const [items, roomList, supplierList] = await Promise.all([getExpenses(), getRooms(), getSuppliers()])
-      setExpenses(items); setRooms(roomList); setSuppliers(supplierList.filter(item => item.status !== 'Archivado'))
+      const [items, roomList, supplierList, memberList] = await Promise.all([getExpenses(), getRooms(), getSuppliers(), getWorkspaceMembers()])
+      setMembers(memberList); setExpenses(items); setRooms(roomList); setSuppliers(supplierList.filter(item => item.status !== 'Archivado'))
     } catch (err) { setError(err.message || 'No se pudieron cargar los gastos.') }
     finally { setLoading(false) }
   }
@@ -54,7 +57,7 @@ export default function Expenses() {
     setForm(expense ? {
       ...empty, ...expense,
       budgeted_amount: String(expense.budgeted_amount ?? ''), amount: String(expense.amount ?? ''), paid_amount: String(expense.paid_amount ?? ''),
-      expense_date: expense.expense_date || '', due_date: expense.due_date || '', room_id: expense.room_id || '', supplier_id: expense.supplier_id || '',
+      payer_user_id: expense.payer_user_id || '', expense_date: expense.expense_date || '', due_date: expense.due_date || '', room_id: expense.room_id || '', supplier_id: expense.supplier_id || '',
     } : { ...empty })
     setFormError(''); setOpen(true)
   }
@@ -89,7 +92,7 @@ export default function Expenses() {
   return (
     <div className="mx-auto max-w-6xl space-y-5">
       <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div><h1 className="text-2xl font-semibold text-stone-800">Gastos y pagos</h1><p className="mt-1 text-sm text-stone-500">Controla lo previsto, los gastos comprometidos y los pagos registrados.</p></div>
+        <div><h1 className="text-2xl font-semibold text-stone-800">Gastos y pagos</h1><p className="mt-1 text-sm text-stone-500">Controla lo previsto, quién paga cada gasto y los pagos registrados.</p></div>
         <Button className="w-full sm:w-auto" onClick={() => edit(null)} disabled={loading || Boolean(error)}><Plus size={16} /> Añadir gasto</Button>
       </div>
 
@@ -97,12 +100,23 @@ export default function Expenses() {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
-          ['Previsto', totals.budgeted], ['Gastos comprometidos', totals.actual], ['Pagado', totals.paid], ['Pendiente', pending],
+          ['Previsto', totals.budgeted], ['Gastos registrados', totals.actual], ['Pagado', totals.paid], ['Pendiente', pending],
         ].map(([label, value]) => <div key={label} className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-xs text-stone-500">{label}</p><p className="mt-1 text-xl font-bold text-stone-800">{formatCurrency(value)}</p></div>)}
       </div>
 
+      <section aria-label="Gastos por persona" className="rounded-2xl bg-white p-4 shadow-sm">
+        <h2 className="font-semibold text-stone-800">Quién paga qué</h2>
+        <p className="mt-1 text-xs text-stone-500">Cada gasto se atribuye a una persona, incluidos sus pagos registrados.</p>
+        <div className="mt-3 space-y-2">{[...members.map(member => ({ id: member.user_id, label: member.email })), { id: '', label: 'Sin asignar' }, ...[...new Set(expenses.map(item => item.payer_user_id).filter(id => id && !members.some(member => member.user_id === id)))].map(id => ({ id, label: 'Antiguo miembro' }))].map(person => {
+          const items = expenses.filter(item => (item.payer_user_id || '') === person.id)
+          const total = recordedExpensesSummary(items)
+          return <div key={person.id} className="flex flex-wrap justify-between gap-2 border-t border-stone-100 pt-2 text-sm"><span className="break-all font-medium">{person.label}</span><span className="text-stone-600">Asignado {formatCurrency(total.committed)} · Pagado {formatCurrency(total.paid)} · Pendiente {formatCurrency(total.pending)}</span></div>
+        })}</div>
+      </section>
+
       {searchParams.get('expense') && <Link to="/gastos" className="inline-block text-sm text-olive underline">Ver todos los gastos</Link>}
       <div className="grid gap-3 rounded-2xl bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <select aria-label="Filtrar por quién paga" className={fieldClass} value={filters.payer_user_id} onChange={event => setFilters(prev => ({ ...prev, payer_user_id: event.target.value }))}><option value="">Todas las personas</option><option value="unassigned">Sin asignar</option>{members.map(member => <option key={member.user_id} value={member.user_id}>{member.email}</option>)}</select>
         <input aria-label="Buscar gastos" placeholder="Buscar concepto o proveedor…" className={fieldClass} value={filters.search} onChange={event => setFilters(prev => ({ ...prev, search: event.target.value }))} />
         <select aria-label="Filtrar por estado" className={fieldClass} value={filters.status} onChange={event => setFilters(prev => ({ ...prev, status: event.target.value }))}><option value="">Todos los estados</option>{statuses.map(value => <option key={value}>{value}</option>)}</select>
         <select aria-label="Filtrar por categoría" className={fieldClass} value={filters.category} onChange={event => setFilters(prev => ({ ...prev, category: event.target.value }))}><option value="">Todas las categorías</option>{categories.map(value => <option key={value}>{value}</option>)}</select>
@@ -122,6 +136,7 @@ export default function Expenses() {
               <div className="flex flex-wrap items-center gap-2"><h2 className="break-words font-semibold text-stone-800">{expense.title}</h2><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${status === 'Pagado' ? 'bg-green-100 text-green-700' : status === 'Parcial' ? 'bg-amber-100 text-amber-700' : 'bg-stone-100 text-stone-600'}`}>{status}</span></div>
               <p className="mt-1 text-lg font-bold text-stone-800">{formatCurrency(amount)} <span className="text-xs font-normal text-stone-500">· pagado {formatCurrency(paid)}</span></p>
               <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-500"><span>{expense.category}</span>{(expense.suppliers?.name || expense.vendor) && <span>{expense.suppliers?.name || expense.vendor}</span>}{expense.rooms?.name && <span>{expense.rooms.name}</span>}{expense.expense_date && <span>{new Date(`${expense.expense_date}T12:00:00`).toLocaleDateString('es-ES')}</span>}{expense.due_date && status !== 'Pagado' && <span>Vence {new Date(`${expense.due_date}T12:00:00`).toLocaleDateString('es-ES')}</span>}</div>
+              <p className="mt-2 break-all text-xs font-medium text-stone-600">Quién paga: {expense.payer_user_id ? members.find(member => member.user_id === expense.payer_user_id)?.email || 'Antiguo miembro' : 'Sin asignar'}</p>
               <PaymentProgress expense={expense} />
               <button type="button" disabled={busy} onClick={() => edit(expense)} className="mt-2 min-h-11 text-sm font-medium text-olive underline">Gestionar pagos</button>
               {expenseInvoice(expense) && <Link to={`/facturas?invoice=${expenseInvoice(expense).id}`} className="mt-3 inline-block text-sm font-medium text-olive underline">Ver factura {expenseInvoice(expense).invoice_number}</Link>}
@@ -139,6 +154,7 @@ export default function Expenses() {
           {formError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{formError}</p>}
           <label className="block text-sm">Concepto<input className={fieldClass} value={form.title} required maxLength={200} onChange={event => change('title', event.target.value)} /></label>
           <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm">Quién paga<select className={fieldClass} value={form.payer_user_id} onChange={event => change('payer_user_id', event.target.value)}><option value="">Sin asignar</option>{form.payer_user_id && !members.some(member => member.user_id === form.payer_user_id) && <option value={form.payer_user_id}>Antiguo miembro</option>}{members.map(member => <option key={member.user_id} value={member.user_id}>{member.email}</option>)}</select></label>
             <label className="block text-sm">Categoría<select className={fieldClass} value={form.category} onChange={event => change('category', event.target.value)}>{categories.map(value => <option key={value}>{value}</option>)}</select></label>
             <label className="block text-sm">Proveedor guardado<select className={fieldClass} value={form.supplier_id} onChange={event => { const id = event.target.value; const supplier = suppliers.find(item => item.id === id); setForm(previous => ({ ...previous, supplier_id: id, vendor: supplier?.name || previous.vendor })) }}><option value="">Sin proveedor asociado</option>{suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
             <label className="block text-sm">Nombre en factura<input className={fieldClass} value={form.vendor} maxLength={200} onChange={event => change('vendor', event.target.value)} /></label>

@@ -8,7 +8,7 @@ function payloadFrom(form) {
     budgeted_amount: Number(form.budgeted_amount) || 0,
     amount: Number(form.amount) || 0, paid_amount: Number(form.paid_amount) || 0,
     expense_date: form.expense_date || null, due_date: form.due_date || null,
-    room_id: form.room_id || null, supplier_id: form.supplier_id || null,
+    payer_user_id: form.payer_user_id || null, room_id: form.room_id || null, supplier_id: form.supplier_id || null,
     notes: form.notes.trim(), updated_at: new Date().toISOString(),
     payment_phases: phasesOf(form).map(phase => ({ ...phase, title: phase.title.trim(), amount: Number(phase.amount) })),
     payment_plan_version: form.payment_plan_version ?? 0,
@@ -37,7 +37,7 @@ export async function saveExpense(id, form) {
     const conflict = new Error('Los pagos han cambiado. Cierra y vuelve a abrir el gasto para revisar los datos actualizados.')
     conflict.code = '40001'; throw conflict
   }
-  if (['PGRST204', '42703'].includes(error?.code)) throw new Error('Comprueba que se ha aplicado la migración 00032 de pagos por fases antes de guardar.')
+  if (['PGRST204', '42703'].includes(error?.code)) throw new Error('Comprueba que se ha aplicado las migraciones 00032 y 00034 de pagos y asignación de gastos antes de guardar.')
   if (error) throw error
   return data
 }

@@ -1,4 +1,5 @@
 import { distance, openingLeaf, openingParts, roomArea, roomCenter } from '../../utils/floorPlan'
+import { furnitureCatalog } from '../../utils/planFurniture'
 
 export default function PlanDrawing({ plan, selected, onSelect, dimensions = true }) {
   const pick = (event, kind, id) => onSelect?.(event, { kind, id })
@@ -30,7 +31,7 @@ export default function PlanDrawing({ plan, selected, onSelect, dimensions = tru
       const active = selected?.id === opening.id, color = active ? '#d86d4d' : opening.type === 'window' ? '#64748b' : '#68765d'
       const width = opening.width, sliding = opening.type === 'window' && opening.windowType !== 'casement'
       const parts = openingParts(opening), leaves = parts.leaves.map(item => openingLeaf(item, opening.type === 'window' ? Math.PI / 3 : Math.PI / 2))
-      const description = opening.type === 'door' ? `Puerta${parts.fixed.length ? ` con ${parts.fixed.length === 2 ? 'dos fijos laterales' : `fijo ${opening.fixedSide === 'left' ? 'izquierdo' : 'derecho'}`}` : ''}` : sliding ? 'Ventana corredera' : `Ventana abatible · ${leaves.length === 2 ? '2 hojas' : '1 hoja'}`
+      const description = opening.type === 'door' ? `Puerta${opening.doorType === 'sliding' ? ' corredera' : opening.doorType === 'double' ? ' de doble hoja' : ''}${parts.fixed.length ? ` con ${parts.fixed.length === 2 ? 'dos fijos laterales' : `fijo ${opening.fixedSide === 'left' ? 'izquierdo' : 'derecho'}`}` : ''}` : sliding ? 'Ventana corredera' : `Ventana abatible · ${leaves.length === 2 ? '2 hojas' : '1 hoja'}`
       return <g key={opening.id} data-plan-kind="opening" data-plan-id={opening.id} transform={`translate(${wall.a.x} ${wall.a.y}) rotate(${angle})`} onPointerDown={event => pick(event, 'opening', opening.id)}>
         <title>{`${description}${sliding || leaves.length === 2 ? '' : ` · Bisagra ${opening.hinge === 'right' ? 'derecha' : 'izquierda'}`}`}</title>
         <line x1={start} y1="0" x2={Math.min(length, start + width)} y2="0" stroke="#faf9f5" strokeWidth={wall.thickness + 0.045} />
@@ -46,9 +47,20 @@ export default function PlanDrawing({ plan, selected, onSelect, dimensions = tru
           </>}
         </> : <>
           {parts.fixed.map((panel, index) => <g key={index} data-opening-fixed="true"><rect x={panel.offset} y={-wall.thickness / 2} width={panel.width} height={wall.thickness} fill="#e6edf0" stroke={color} strokeWidth="0.035" /><line x1={panel.offset} y1="0" x2={panel.offset + panel.width} y2="0" stroke={color} strokeWidth="0.025" /><text x={panel.offset + panel.width / 2} y={-wall.thickness / 2 - 0.08} textAnchor="middle" fontSize="0.13" fill={color} pointerEvents="none">F</text></g>)}
-          {leaves.map((leaf, index) => <g key={index} data-opening-leaf="door"><line x1={leaf.hinge} y1="0" x2={leaf.x} y2={leaf.y} stroke={color} strokeWidth="0.045" /><path d={leaf.arc} fill="none" stroke={color} strokeWidth="0.025" /></g>)}
+          {opening.doorType === 'sliding' ? <g data-opening-leaf="sliding-door"><rect x={parts.leaves[0].offset} y={-0.035} width={parts.leaves[0].width} height="0.07" fill="#e5dfd1" stroke={color} strokeWidth="0.025" /><path d={`M ${parts.leaves[0].offset + width * 0.2} ${opening.flip ? -0.22 : 0.22} h ${width * (opening.hinge === 'right' ? -0.35 : 0.35)}`} stroke={color} strokeWidth="0.025" /><text x={start + width / 2} y={opening.flip ? -0.25 : 0.3} textAnchor="middle" fontSize="0.18" fill={color} pointerEvents="none">{opening.hinge === 'right' ? '←' : '→'}</text></g> : leaves.map((leaf, index) => <g key={index} data-opening-leaf="door"><line x1={leaf.hinge} y1="0" x2={leaf.x} y2={leaf.y} stroke={color} strokeWidth="0.045" /><path d={leaf.arc} fill="none" stroke={color} strokeWidth="0.025" /></g>)}
         </>}
         <rect x={start - 0.05} y={-0.18} width={width + 0.1} height="0.36" fill="transparent" />
+      </g>
+    })}
+    {(plan.furniture || []).map(item => {
+      const active = selected?.id === item.id, color = furnitureCatalog[item.type]?.color || '#b5aa96', w = item.width, d = item.depth
+      return <g key={item.id} data-plan-kind="furniture" data-plan-id={item.id} transform={`translate(${item.x} ${item.y}) rotate(${item.rotation})`} onPointerDown={event => pick(event, 'furniture', item.id)}>
+        <title>{item.name}{item.locked ? ' · Bloqueado' : ''} · {w.toFixed(2)} × {d.toFixed(2)} m</title>
+        <rect x={-w / 2} y={-d / 2} width={w} height={d} rx="0.045" fill={color} fillOpacity="0.75" stroke={active ? '#d86d4d' : '#746d60'} strokeWidth={active ? '0.045' : '0.02'} strokeDasharray={item.locked ? '.05 .04' : undefined} />
+        {item.type === 'bed' && <><rect x={-w / 2 + 0.06} y={-d / 2 + 0.08} width={w - 0.12} height={d * 0.18} rx="0.03" fill="#faf9f5" stroke="#9b9587" strokeWidth="0.015" /><line x1={-w / 2} y1={-d * 0.15} x2={w / 2} y2={-d * 0.15} stroke="#9b9587" strokeWidth="0.02" /></>}
+        {(item.type === 'sofa' || item.type === 'chair') && <><rect x={-w / 2 + 0.07} y={-d / 2 + 0.06} width={w - 0.14} height={d * 0.22} rx="0.03" fill={color} stroke="#746d60" strokeWidth="0.015" /><line x1={-w / 2 + 0.12} y1={-d / 2 + d * 0.28} x2={-w / 2 + 0.12} y2={d / 2} stroke="#746d60" strokeWidth="0.02" /><line x1={w / 2 - 0.12} y1={-d / 2 + d * 0.28} x2={w / 2 - 0.12} y2={d / 2} stroke="#746d60" strokeWidth="0.02" /></>}
+        {item.type === 'wardrobe' && <><line x1="0" y1={-d / 2} x2="0" y2={d / 2} stroke="#746d60" strokeWidth="0.02" /><circle cx="-0.06" cy={d / 2 - 0.07} r="0.02" fill="#746d60" /><circle cx="0.06" cy={d / 2 - 0.07} r="0.02" fill="#746d60" /></>}
+        <text x="0" y={item.type === 'bed' ? d * 0.15 : d * 0.2} textAnchor="middle" fontSize={Math.min(0.15, w / Math.max(item.name.length, 1) * 1.3)} fill="#42483e" pointerEvents="none">{item.name}</text>
       </g>
     })}
   </>

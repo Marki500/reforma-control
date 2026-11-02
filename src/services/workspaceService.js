@@ -107,7 +107,13 @@ export async function getProjectNotificationPreferences() { const { data, error 
 export async function updateProjectNotificationPreferences(preferences) { const { error } = await supabase.rpc('update_project_notification_preferences', { p_email_comments: preferences.email_comments, p_email_mentions: preferences.email_mentions }); if (error) throw error }
 
 export async function getWorkspaceMembers() {
-  const { data, error } = await supabase.rpc('list_workspace_members')
+  let { data, error } = await supabase.rpc('list_workspace_members_v2')
+  // Support deployments while the display-name migration is being applied.
+  if (error?.code === 'PGRST202' || error?.code === '42883') {
+    const result = await supabase.rpc('list_workspace_members')
+    data = result.data
+    error = result.error
+  }
   if (error) throw error
   return data || []
 }

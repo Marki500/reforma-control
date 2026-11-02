@@ -19,6 +19,19 @@ export async function uploadHomeDocument(file) {
   return authenticatedUpload('/api/upload-document', body)
 }
 
+export async function getHomeDocumentPreview(document, signal) {
+  const { data, error } = await supabase.storage.from('home-documents').createSignedUrl(document.file_url, 3600)
+  if (error) throw error
+  if (!data?.signedUrl) throw new Error('No se pudo abrir el documento.')
+  const response = await fetch(data.signedUrl, { signal })
+  if (!response.ok) throw new Error('No se pudo cargar el documento. Inténtalo de nuevo.')
+  const blob = await response.blob()
+  const extension = document.file_url.split('?')[0].split('.').pop().toLowerCase()
+  const type = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }[extension]
+  if (!type) throw new Error('Este formato no admite vista previa. Abre el archivo en otra pestaña.')
+  return { file: new File([blob], document.title, { type }), url: data.signedUrl }
+}
+
 export async function createHomeDocument(form, upload) {
   const projectId = await getCurrentProjectId()
   const { data, error } = await supabase.from('home_documents').insert({

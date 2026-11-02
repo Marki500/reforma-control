@@ -1,4 +1,43 @@
-import { distance, openingElevation, openingParts, openingLeaf } from './floorPlan.js'
+import { distance, drawingTargets, projectToWall, samePoint, openingElevation, openingParts, openingLeaf } from './floorPlan.js'
+
+// Rectangular wall ends stop at their axes, leaving the outside of a corner
+// empty. Fill that sector with a shared mitre (or a bounded bevel at sharp angles).
+export function wallCornerJoins(plan) {
+  const joins = [], turn = Math.PI * 2
+  for (const { point } of drawingTargets(plan.walls)) {
+    const rays = []
+    for (const wall of plan.walls) {
+      if (projectToWall(point, wall).distance > 0.001) continue
+      for (const end of [wall.a, wall.b]) {
+        if (samePoint(point, end)) continue
+        const length = distance(point, end), dx = (end.x - point.x) / length, dy = (end.y - point.y) / length
+        const angle = (Math.atan2(dy, dx) + turn) % turn
+        const duplicate = rays.find(ray => Math.abs(ray.dx - dx) + Math.abs(ray.dy - dy) < 1e-6)
+        if (duplicate) { duplicate.half = Math.max(duplicate.half, wall.thickness / 2); duplicate.height = Math.max(duplicate.height, wall.height) }
+        else rays.push({ dx, dy, angle, half: wall.thickness / 2, height: wall.height })
+      }
+    }
+    rays.sort((a, b) => a.angle - b.angle)
+    if (rays.length < 2) continue
+    for (let i = 0; i < rays.length; i++) {
+      const a = rays[i], b = rays[(i + 1) % rays.length]
+      const gap = (b.angle - a.angle + turn) % turn
+      if (gap <= Math.PI + 1e-6) continue
+      const cross = a.dx * b.dy - a.dy * b.dx
+      if (Math.abs(cross) < 1e-6) continue
+      const left = { x: -a.dy * a.half, y: a.dx * a.half }
+      const right = { x: b.dy * b.half, y: -b.dx * b.half }
+      const along = ((right.x - left.x) * b.dy - (right.y - left.y) * b.dx) / cross
+      const tip = { x: left.x + along * a.dx, y: left.y + along * a.dy }
+      const offsets = [left]
+      const bevel = Math.hypot(tip.x, tip.y) > 4 * Math.max(a.half, b.half)
+      if (!bevel) offsets.push(tip)
+      offsets.push(right, { x: 0, y: 0 })
+      joins.push({ point, points: offsets.map(p => ({ x: point.x + p.x, y: point.y + p.y })), height: Math.min(a.height, b.height), bevel })
+    }
+  }
+  return joins
+}
 
 // Solid wall volumes exclude the complete opening, including its sill/lintel.
 export function wallSolidSections(wall, openings) {
@@ -63,6 +102,15 @@ export function buildPlanScene(THREE, plan, { cutaway = false } = {}) {
         } else box(pivot, part.width * 0.88, 1, direction * 0.04, 0.1, 0.025, 0.06, frame)
       }
     }
+  }
+  for (const join of wallCornerJoins(plan)) {
+    const height = Math.min(join.height, cutaway ? 1 : join.height)
+    const shape = new THREE.Shape(join.points.map(p => new THREE.Vector2(p.x, -p.y)))
+    const geometry = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false })
+    geometry.rotateX(-Math.PI / 2)
+    const mesh = new THREE.Mesh(geometry, plaster)
+    mesh.userData.wallCornerJoin = true
+    root.add(mesh)
   }
   for (const f of plan.furniture || []) {
     const group = new THREE.Group(); group.position.set(f.x, 0.015, f.y); group.rotation.y = -f.rotation * Math.PI / 180; root.add(group)

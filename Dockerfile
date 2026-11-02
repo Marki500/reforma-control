@@ -16,6 +16,7 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/server.js ./
 COPY --from=build /app/server ./server
+COPY --from=build /app/scripts/diagnose-product-import.mjs ./scripts/diagnose-product-import.mjs
 COPY --from=build /app/src/utils/documentAnalysis.js ./src/utils/documentAnalysis.js
 
 ENV NODE_ENV=production

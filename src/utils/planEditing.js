@@ -1,10 +1,54 @@
-import { distance, projectToWall, pointOnWall, pointInPolygon, samePoint, reconcilePlan, moveJunctions, validatePlan } from './floorPlan.js'
+import { distance, drawingTargets, projectToWall, pointOnWall, pointInPolygon, samePoint, reconcilePlan, moveJunctions, validatePlan } from './floorPlan.js'
 import { furnitureCorners } from './planFurniture.js'
 
 const translate = (p, dx, dy) => ({ x: p.x + dx, y: p.y + dy })
 const edges = room => [room.points, ...(room.holes || [])].flatMap(points => points.map((a, index) => ({ a, b: points[(index + 1) % points.length] })))
 const onBoundary = (wall, room) => edges(room).some(edge => projectToWall(wall.a, edge).distance < 0.001 && projectToWall(wall.b, edge).distance < 0.001)
 const contains = (room, p) => pointInPolygon(p, room.points) && !(room.holes || []).some(hole => pointInPolygon(p, hole))
+
+export function planJunctions(plan) {
+  return drawingTargets(plan.walls).map(({ point }) => {
+    const walls = plan.walls.filter(wall => projectToWall(point, wall).distance < 0.001)
+    return { id: `${point.x.toFixed(3)},${point.y.toFixed(3)}`, point, wallIds: walls.map(wall => wall.id), locked: walls.some(wall => wall.locked) }
+  }).filter(junction => junction.wallIds.length > 1)
+}
+
+// An interior T/X junction becomes real segment endpoints only when moved.
+// Each opening stays on its original side; no door/window may straddle a cut.
+export function movePlanJunction(plan, from, to, makeId = () => crypto.randomUUID()) {
+  if (samePoint(from, to)) return plan
+  const connected = plan.walls.filter(wall => projectToWall(from, wall).distance < 0.001)
+  if (connected.length < 2) throw new Error('Selecciona una unión entre paredes.')
+  const walls = [], openings = []
+  for (const wall of plan.walls) {
+    const hosted = plan.openings.filter(opening => opening.wallId === wall.id)
+    if (!connected.includes(wall) || samePoint(from, wall.a) || samePoint(from, wall.b)) {
+      walls.push(wall); openings.push(...hosted); continue
+    }
+    if (wall.locked || hosted.some(opening => opening.locked)) throw new Error('Desbloquea la pared y sus aberturas antes de mover esta unión.')
+    const cut = projectToWall(from, wall).offset, length = distance(wall.a, wall.b)
+    if (cut < 0.2 || length - cut < 0.2) throw new Error('La unión está demasiado cerca del extremo de una pared (mínimo 20 cm).')
+    if (hosted.some(opening => cut > opening.offset - 0.05 - 1e-6 && cut < opening.offset + opening.width + 0.05 + 1e-6)) throw new Error('La unión atraviesa una puerta o ventana. Muévela antes de desplazar el punto.')
+    const secondId = makeId()
+    walls.push({ ...wall, b: from }, { ...wall, id: secondId, a: from })
+    openings.push(...hosted.map(opening => opening.offset >= cut ? { ...opening, wallId: secondId, offset: opening.offset - cut } : opening))
+  }
+  const moved = point => samePoint(point, from) ? { ...to } : point
+  const candidate = {
+    ...plan,
+    walls: walls.map(wall => ({ ...wall, a: moved(wall.a), b: moved(wall.b) })),
+    openings,
+    rooms: plan.rooms.map(room => ({ ...room, points: room.points.map(moved), ...(room.holes ? { holes: room.holes.map(hole => hole.map(moved)) } : {}) })),
+  }
+  const lockError = lockedChangeError(plan, candidate)
+  if (lockError) throw new Error(lockError)
+  if (!validatePlan(candidate)) throw new Error('El movimiento colapsa una pared o deja una abertura sin espacio. Prueba otra posición.')
+  const result = reconcilePlan(candidate)
+  const roomLockError = lockedChangeError(plan, result)
+  if (roomLockError) throw new Error(roomLockError)
+  if (result.openings.length !== plan.openings.length || !validatePlan(result)) throw new Error('No se puede mover la unión sin perder una abertura.')
+  return result
+}
 
 // Split long walls where the selected room ends. Openings crossing a cut must be
 // repositioned by the user; silently splitting a real door would lose its meaning.

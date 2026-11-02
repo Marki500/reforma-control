@@ -17,7 +17,7 @@ export default function PlanDrawing({ plan, selected, onSelect, dimensions = tru
       const active = selected?.id === wall.id, length = distance(wall.a, wall.b)
       const vertical = Math.abs(wall.b.y - wall.a.y) > Math.abs(wall.b.x - wall.a.x)
       return <g key={wall.id} data-plan-kind="wall" data-plan-id={wall.id} onPointerDown={event => pick(event, 'wall', wall.id)}>
-        <line x1={wall.a.x} y1={wall.a.y} x2={wall.b.x} y2={wall.b.y} stroke="transparent" strokeWidth="0.35" />
+        <line x1={wall.a.x} y1={wall.a.y} x2={wall.b.x} y2={wall.b.y} stroke="transparent" strokeWidth={onSelect ? 18 : 0.35} vectorEffect={onSelect ? 'non-scaling-stroke' : undefined} />
         <line x1={wall.a.x} y1={wall.a.y} x2={wall.b.x} y2={wall.b.y} stroke={active ? '#d86d4d' : '#42483e'} strokeWidth={wall.thickness} strokeLinecap="square" />
         {dimensions && <text x={(wall.a.x + wall.b.x) / 2 + (vertical ? 0.25 : 0)} y={(wall.a.y + wall.b.y) / 2 - (vertical ? 0 : 0.23)} textAnchor="middle" fontSize="0.16" fill="#777568" paintOrder="stroke" stroke="#faf9f5" strokeWidth="0.07" strokeLinejoin="round" pointerEvents="none">{length.toFixed(2)} m</text>}
         {active && [wall.a, wall.b].map((p, index) => <g key={index} pointerEvents="none"><circle cx={p.x} cy={p.y} r="0.09" fill="white" stroke="#d86d4d" strokeWidth="0.04" /><text x={p.x} y={p.y - 0.2} textAnchor="middle" fontSize="0.16" fill="#d86d4d" paintOrder="stroke" stroke="#faf9f5" strokeWidth="0.06">{index ? 'B' : 'A'}</text></g>)}

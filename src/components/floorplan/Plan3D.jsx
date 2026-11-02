@@ -4,6 +4,9 @@ import { buildPlanScene, disposeScene } from '../../utils/plan3d'
 
 export default function Plan3D({ plan }) {
   const host = useRef(), reset = useRef(), [cutaway, setCutaway] = useState(false), [status, setStatus] = useState('Cargando vista 3D…')
+  const rebuild = useRef(), cutawayValue = useRef(cutaway)
+  cutawayValue.current = cutaway
+  useEffect(() => { rebuild.current?.(cutaway) }, [cutaway])
   useEffect(() => {
     let disposed = false, cleanup = () => {}
     setStatus('Cargando vista 3D…')
@@ -23,18 +26,22 @@ export default function Plan3D({ plan }) {
       reset.current = resetCamera
       scene.add(new THREE.HemisphereLight('#ffffff', '#b2aa98', 2.4))
       const sun = new THREE.DirectionalLight('#fff4df', 2.5); sun.position.set(cx - 8, 14, cz + 5); scene.add(sun)
-      const model = buildPlanScene(THREE, plan, { cutaway }); scene.add(model)
+      let model = buildPlanScene(THREE, plan, { cutaway: cutawayValue.current }); scene.add(model)
       const grid = new THREE.GridHelper(Math.min(1000, Math.ceil(size * 1.8)), Math.min(100, Math.ceil(size * 1.8)), '#cec8bb', '#e2ded4'); grid.position.set(cx, -0.025, cz); scene.add(grid)
       const render = () => renderer.render(scene, camera)
+      rebuild.current = value => {
+        scene.remove(model); disposeScene(model)
+        model = buildPlanScene(THREE, plan, { cutaway: value }); scene.add(model); render()
+      }
       const resize = () => { const { width, height } = node.getBoundingClientRect(); renderer.setSize(Math.max(1, width), Math.max(1, height)); camera.aspect = Math.max(1, width) / Math.max(1, height); camera.updateProjectionMatrix(); render() }
       const observer = new ResizeObserver(resize); observer.observe(node)
       controls.addEventListener('change', render); resetCamera(); resize(); setStatus('')
       const contextLost = event => { event.preventDefault(); setStatus('La vista 3D ha perdido el contexto gráfico. Vuelve a 2D y abre 3D otra vez. Tus cambios se conservan.') }
       renderer.domElement.addEventListener('webglcontextlost', contextLost)
-      cleanup = () => { observer.disconnect(); controls.removeEventListener('change', render); controls.dispose(); renderer.domElement.removeEventListener('webglcontextlost', contextLost); disposeScene(scene); renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove(); reset.current = null }
+      cleanup = () => { rebuild.current = null; observer.disconnect(); controls.removeEventListener('change', render); controls.dispose(); renderer.domElement.removeEventListener('webglcontextlost', contextLost); disposeScene(scene); renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove(); reset.current = null }
     }).catch(() => { if (!disposed) setStatus('No se pudo cargar la vista 3D. Vuelve a 2D e inténtalo otra vez.') })
     return () => { disposed = true; cleanup() }
-  }, [plan, cutaway])
+  }, [plan])
   return <div className="absolute inset-0 bg-[#f5f3ed]" aria-label="Visor 3D">
     <div ref={host} className="absolute inset-0" />
     <div className="absolute left-4 right-4 top-4 flex flex-wrap items-center justify-between gap-2"><span className="rounded-lg bg-white/95 px-3 py-2 text-xs text-stone-600">Vista de volumen · medidas del plano</span><div className="flex gap-2"><button className="min-h-11 rounded-lg border border-stone-200 bg-white px-3 text-xs" aria-pressed={cutaway} onClick={() => setCutaway(value => !value)}>{cutaway ? 'Mostrar paredes completas' : 'Recortar paredes a 1 m'}</button><button className="min-h-11 rounded-lg border border-stone-200 bg-white px-3 text-xs" onClick={() => reset.current?.()}>Centrar 3D</button></div></div>

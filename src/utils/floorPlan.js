@@ -3,7 +3,7 @@ import { validFurniture } from './planFurniture.js'
 export const GRID = 0.1
 export const emptyPlan = () => ({ version: 1, walls: [], openings: [], rooms: [] })
 export const distance = (a, b) => Math.hypot(b.x - a.x, b.y - a.y)
-export const snap = point => ({ x: Math.round(point.x / GRID) * GRID, y: Math.round(point.y / GRID) * GRID })
+export const snap = (point, step = GRID) => ({ x: Math.round(point.x / step) * step, y: Math.round(point.y / step) * step })
 export const samePoint = (a, b) => distance(a, b) < 0.001
 const key = p => `${p.x.toFixed(3)},${p.y.toFixed(3)}`
 const cross = (a, b) => a.x * b.y - a.y * b.x
@@ -33,14 +33,14 @@ export function drawingTargets(walls) {
   }
   return [...targets.values()]
 }
-export function snapDrawing(point, walls, anchor, tolerance = 0.18, targets = drawingTargets(walls)) {
+export function snapDrawing(point, walls, anchor, tolerance = 0.18, targets = drawingTargets(walls), step = GRID) {
   const horizontal = anchor && Math.abs(point.x - anchor.x) >= Math.abs(point.y - anchor.y)
   const constrained = anchor ? horizontal ? { x: point.x, y: anchor.y } : { x: anchor.x, y: point.y } : point
   const aligned = p => !anchor || Math.abs(horizontal ? p.y - anchor.y : p.x - anchor.x) < 1e-6
   const nearest = targets.filter(target => aligned(target.point) && distance(target.point, constrained) <= tolerance)
     .sort((a, b) => distance(a.point, constrained) - distance(b.point, constrained))[0]
   if (nearest) return { ...nearest, point: { ...nearest.point } }
-  let result = snap(constrained)
+  let result = snap(constrained, step)
   if (anchor) result = horizontal ? { x: result.x, y: anchor.y } : { x: anchor.x, y: result.y }
   const candidates = []
   for (const wall of walls) {

@@ -8,9 +8,11 @@ import { pdfFixture } from './pdfFixtures.mjs'
 for (const provider of ['openrouter', 'gemini']) test(`${provider}: empty text extraction retries visually once; empty visual extraction fails without a draft`, { timeout: 60000 }, async () => {
   const requests = [], reservations = []
   let failAll = false
+  const uploads = []
   const mock = http.createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json')
     const chunks = []; for await (const chunk of req) chunks.push(chunk)
+    if (req.url.startsWith('/storage/v1/object/budget-pdfs/')) { uploads.push({ url: req.url, type: req.headers['content-type'], body: Buffer.concat(chunks) }); return res.end('{}') }
     if (req.url === '/auth/v1/user') return res.end(JSON.stringify({ id: req.headers.authorization }))
     if (req.url === '/rest/v1/rpc/reserve_ai_usage') {
       reservations.push(req.headers.authorization)
@@ -78,6 +80,47 @@ for (const provider of ['openrouter', 'gemini']) test(`${provider}: empty text e
       assert.equal('plugins' in request, false)
       assert.doesNotMatch(JSON.stringify(request), /AUTOR_METADATA/)
     }
+    failAll = false
+    for (const [type, extension] of [['image/jpeg', '.jpg'], ['image/png', '.png'], ['image/webp', '.webp']]) {
+      const bytes = Buffer.from('image-fixture-for-mocked-provider')
+      const uploadBody = new FormData()
+      uploadBody.append('file', new Blob([bytes], { type }), `quote${extension}`)
+      const uploaded = await fetch(`${base}/api/upload-pdf`, { method: 'POST', headers: { Authorization: 'Bearer upload-image-test' }, body: uploadBody })
+      assert.equal(uploaded.status, 200, await uploaded.clone().text())
+      const saved = await uploaded.json()
+      assert.ok(saved.url.endsWith(extension))
+      assert.equal(uploads.at(-1).type, type)
+      assert.deepEqual(uploads.at(-1).body, bytes)
+
+      const analysisBody = new FormData()
+      analysisBody.append('file', new Blob([bytes], { type }), `quote${extension}`)
+      const started = await fetch(`${base}/api/analyze-budget`, { method: 'POST', headers: { Authorization: `Bearer image-test-${type}` }, body: analysisBody })
+      assert.equal(started.status, 202, await started.clone().text())
+      const job = await started.json()
+      let result, status
+      for (let i = 0; i < 150; i++) {
+        const poll = await fetch(`${base}/api/analyze-budget/${job.job_id}`, { headers: { 'x-analysis-token': job.poll_token } })
+        status = poll.status; result = await poll.json()
+        if (status !== 202) break
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      assert.equal(status, 200, JSON.stringify(result))
+      assert.equal(result.draft.total_amount, 121)
+      assert.equal(result.reading_mode, 'vision')
+      const request = requests.at(-1)
+      if (provider === 'gemini') {
+        const image = request.contents[0].parts.find(part => part.inline_data)
+        assert.equal(image.inline_data.mime_type, type)
+        assert.equal(image.inline_data.data, bytes.toString('base64'))
+      } else {
+        const image = request.messages[0].content.find(part => part.type === 'image_url')
+        assert.equal(image.image_url.url, `data:${type};base64,${bytes.toString('base64')}`)
+      }
+    }
+    const unsupported = new FormData()
+    unsupported.append('file', new Blob(['<svg/>'], { type: 'image/svg+xml' }), 'quote.svg')
+    const rejected = await fetch(`${base}/api/upload-pdf`, { method: 'POST', headers: { Authorization: 'Bearer upload-image-test' }, body: unsupported })
+    assert.equal(rejected.status, 400)
   } finally {
     if (child.exitCode === null) { const stopped = once(child, 'exit'); child.kill(); await stopped }
     mock.closeAllConnections(); await new Promise(resolve => mock.close(resolve))

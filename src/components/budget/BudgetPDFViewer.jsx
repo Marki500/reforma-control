@@ -5,6 +5,7 @@ export default function BudgetPDFViewer({ pdf, onClose }) {
   const [loading, setLoading] = useState(true)
 
   if (!pdf) return null
+  const isImage = /\.(jpe?g|png|webp)(?:[?#]|$)/i.test(pdf.file_url || '')
 
   return (
     <div
@@ -60,12 +61,12 @@ export default function BudgetPDFViewer({ pdf, onClose }) {
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-stone-600" />
             </div>
           )}
-          <iframe
+          {isImage ? <img src={pdf.file_url} alt={pdf.name} className="max-h-[70vh] w-full object-contain" onLoad={() => setLoading(false)} onError={() => setLoading(false)} /> : <iframe
             src={pdf.file_url}
             className="h-[70vh] w-full"
             onLoad={() => setLoading(false)}
             title={pdf.name}
-          />
+          />}
         </div>
       </div>
     </div>

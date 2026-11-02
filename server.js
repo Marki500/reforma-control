@@ -579,15 +579,6 @@ const upload = multer({
   },
 })
 
-const pdfUpload = multer({
-  storage,
-  limits: { fileSize: 20 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    const allowed = ['application/pdf']
-    cb(null, allowed.includes(file.mimetype))
-  },
-})
-
 const documentUpload = multer({
   storage,
   limits: { fileSize: 20 * 1024 * 1024 },
@@ -721,7 +712,7 @@ async function requestOpenRouterDocument(file, source) {
 
 async function extractPdfText(file) {
   if (file.mimetype !== 'application/pdf') {
-    const error = new Error('El análisis de imágenes requiere el respaldo visual de OpenRouter. Puedes rellenar la factura manualmente.'); error.code = 'IMAGE_REQUIRES_VISION'; error.aiProvider = 'groq'; throw error
+    const error = new Error('El análisis de imágenes requiere el respaldo visual de OpenRouter. Puedes rellenar el documento manualmente.'); error.code = 'IMAGE_REQUIRES_VISION'; error.aiProvider = 'groq'; throw error
   }
   const inspection = await inspectPdf(file)
   if (inspection.needsVision) {
@@ -843,7 +834,7 @@ async function startDocumentAnalysis(req, res) {
   if (req.file) req.file.documentKind = invoice ? 'invoice' : 'budget'
   const selectedModel = aiProvider === 'groq' ? groqModel : aiProvider === 'openrouter' ? openRouterModel : aiModel
   const diagnostic = { requestId: req.requestId, userId: req.authUser.id, documentKind: invoice ? 'invoice' : 'budget', provider: aiProvider, model: selectedModel }
-  if (!req.file || (!invoice && req.file.mimetype !== 'application/pdf')) return res.status(400).json({ error: invoice ? 'Selecciona una factura PDF, JPG, PNG o WebP.' : 'Selecciona un archivo PDF válido.', code: invoice ? 'INVALID_INVOICE_FILE' : 'INVALID_PDF', request_id: req.requestId })
+  if (!req.file) return res.status(400).json({ error: invoice ? 'Selecciona una factura PDF, JPG, PNG o WebP.' : 'Selecciona un presupuesto PDF, JPG, PNG o WebP.', code: invoice ? 'INVALID_INVOICE_FILE' : 'INVALID_PDF', request_id: req.requestId })
   if (!['gemini', 'openrouter', 'groq'].includes(aiProvider)) return res.status(503).json({ error: `El proveedor de IA “${aiProvider}” no es válido. Usa groq, openrouter o gemini.`, code: 'AI_PROVIDER_INVALID', request_id: req.requestId })
   const missingProviderKey = (aiProvider === 'gemini' && !geminiApiKey) || (aiProvider === 'openrouter' && !openRouterApiKey) || (aiProvider === 'groq' && !groqApiKey)
   if (missingProviderKey) return res.status(503).json({ error: `Falta configurar la clave de ${aiProvider === 'groq' ? 'Groq' : aiProvider === 'openrouter' ? 'OpenRouter' : 'Gemini'} en el servidor.`, code: 'AI_NOT_CONFIGURED', request_id: req.requestId })
@@ -883,7 +874,7 @@ async function startDocumentAnalysis(req, res) {
   const cleanup = setTimeout(() => aiAnalysisJobs.delete(jobId), 10 * 60 * 1000)
   cleanup.unref?.()
 }
-app.post('/api/analyze-budget', requireSession, pdfUpload.single('file'), startDocumentAnalysis)
+app.post('/api/analyze-budget', requireSession, documentUpload.single('file'), startDocumentAnalysis)
 app.post('/api/analyze-invoice', requireSession, documentUpload.single('file'), startDocumentAnalysis)
 
 app.get(['/api/analyze-budget/:jobId', '/api/analyze-invoice/:jobId'], (req, res) => {
@@ -928,18 +919,19 @@ app.post('/api/upload-file', requireSession, upload.single('file'), async (req, 
   }
 })
 
-app.post('/api/upload-pdf', requireSession, pdfUpload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'PDF requerido' })
+app.post('/api/upload-pdf', requireSession, documentUpload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Selecciona un presupuesto PDF, JPG, PNG o WebP.' })
 
   try {
-    const fileName = `budget-pdfs/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.pdf`
+    const extension = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' }[req.file.mimetype]
+    const fileName = `budget-pdfs/${Date.now()}_${Math.random().toString(36).slice(2, 8)}${extension}`
 
     const uploadRes = await fetch(`${supabaseUrl}/storage/v1/object/budget-pdfs/${fileName}`, {
       method: 'POST',
       headers: {
         'Authorization': req.uploadAuthorization,
         'apikey': supabaseKey,
-        'Content-Type': 'application/pdf',
+        'Content-Type': req.file.mimetype,
         'x-upsert': 'true',
       },
       body: req.file.buffer,
@@ -956,7 +948,7 @@ app.post('/api/upload-pdf', requireSession, pdfUpload.single('file'), async (req
     })
   } catch (error) {
     res.status(500).json({
-      error: error instanceof Error ? error.message : 'Error al subir PDF',
+      error: error instanceof Error ? error.message : 'Error al subir presupuesto',
     })
   }
 })

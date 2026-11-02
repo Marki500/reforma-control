@@ -107,9 +107,10 @@ export default function BudgetPDFs() {
 
   function chooseFile(file) {
     if (uploading || pendingBudget || analysisState === 'analyzing') return
-    if (!file || file.type !== 'application/pdf') return
-    if (file.size > 20 * 1024 * 1024) { setAnalysisError('Selecciona un PDF de hasta 20 MB.'); return }
-    setUploadForm({ file, ...emptyMetadata, name: file.name.replace(/\.pdf$/i, '') })
+    if (!file) return
+    if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { setAnalysisError('Selecciona un presupuesto PDF, JPG, PNG o WebP.'); return }
+    if (file.size > 20 * 1024 * 1024) { setAnalysisError('Selecciona un PDF o imagen de hasta 20 MB.'); return }
+    setUploadForm({ file, ...emptyMetadata, name: file.name.replace(/\.(pdf|jpe?g|png|webp)$/i, '') })
     setReviewed(false)
     setNewSupplier({ ...emptyBudgetSupplier }); setCreateSupplier(false)
     setAnalysisState('idle')
@@ -135,7 +136,7 @@ export default function BudgetPDFs() {
       return
     }
     if (uploadForm.file.size > 14 * 1024 * 1024) {
-      setAnalysisError('Para analizarlo con IA, el PDF debe ocupar como máximo 14 MB. Puedes rellenarlo manualmente.')
+      setAnalysisError('Para analizarlo con IA, el documento debe ocupar como máximo 14 MB. Puedes rellenarlo manualmente.')
       return
     }
     setAnalysisState('analyzing')
@@ -192,8 +193,8 @@ export default function BudgetPDFs() {
       if (matchingBudgetSuppliers(suppliers, newSupplier).length > 1) { setAnalysisError('Elige uno de los proveedores coincidentes antes de guardar.'); return }
     }
     if (!reviewed && !pendingBudget) { setAnalysisError('Confirma que has revisado el documento y sus importes.'); return }
-    if (!uploadForm.file) { setOperationError('Selecciona un archivo PDF.'); return }
-    if (!['ready', 'manual'].includes(analysisState)) { setAnalysisError('Analiza el PDF o elige rellenarlo manualmente antes de guardarlo.'); return }
+    if (!uploadForm.file) { setOperationError('Selecciona un PDF o una imagen.'); return }
+    if (!['ready', 'manual'].includes(analysisState)) { setAnalysisError('Analiza el documento o elige rellenarlo manualmente antes de guardarlo.'); return }
     setOperationError('')
     setUploading(true)
     let result
@@ -201,7 +202,7 @@ export default function BudgetPDFs() {
       const projectId = creating ? (pendingBudget?.projectId || await getCurrentProjectId()) : null
       result = pendingBudget ? { url: pendingBudget.budget.file_url, size: pendingBudget.budget.file_size } : await uploadPDF(uploadForm.file)
       const budget = pendingBudget?.budget || {
-        name: uploadForm.name.trim() || uploadForm.file.name.replace(/\.pdf$/i, ''),
+        name: uploadForm.name.trim() || uploadForm.file.name.replace(/\.(pdf|jpe?g|png|webp)$/i, ''),
         file_url: result.url,
         file_size: result.size,
         category_id: uploadForm.category_id || null,
@@ -303,7 +304,7 @@ export default function BudgetPDFs() {
             Presupuestos recibidos
           </h1>
           <p className="mt-1 text-sm text-stone-500">
-            Tus presupuestos en PDF organizados por categoría
+            Tus presupuestos en PDF o imagen organizados por categoría
           </p>
         </div>
         <button
@@ -311,7 +312,7 @@ export default function BudgetPDFs() {
           className="inline-flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-xl bg-stone-700 px-4 py-2 text-sm font-medium text-white transition-all hover:bg-stone-800 sm:w-auto"
         >
           <Plus size={16} />
-          Subir PDF
+          Subir presupuesto
         </button>
       </div>
 
@@ -468,16 +469,16 @@ export default function BudgetPDFs() {
               {uploadForm.file ? <FileText size={32} className="text-terracotta" /> : <Upload size={32} className="text-stone-300" />}
               <div>
                 <p className="text-sm font-medium text-stone-700">
-                  {uploadForm.file ? uploadForm.file.name : 'Haz clic o arrastra un PDF aquí'}
+                  {uploadForm.file ? uploadForm.file.name : 'Haz clic o arrastra un PDF o imagen aquí'}
                 </p>
-                <p className="text-xs text-stone-400">{uploadForm.file ? `${(uploadForm.file.size / 1024 / 1024).toFixed(1)} MB · Pulsa para cambiar` : 'PDF hasta 20 MB'}</p>
+                <p className="text-xs text-stone-400">{uploadForm.file ? `${(uploadForm.file.size / 1024 / 1024).toFixed(1)} MB · Pulsa para cambiar` : 'PDF, JPG, PNG o WebP hasta 20 MB'}</p>
               </div>
             </div>
 
             <input
               ref={fileRef}
               type="file"
-              accept="application/pdf"
+              accept="application/pdf,image/jpeg,image/png,image/webp"
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0]
@@ -501,7 +502,7 @@ export default function BudgetPDFs() {
               {analysisState === 'ready' && analysisResult && (
                 <div className="space-y-3 rounded-xl border border-green-200 bg-green-50/70 p-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-green-800"><Sparkles size={16} /> Borrador generado · revísalo antes de guardar</div>
-                  {analysisResult.reading_mode === 'vision' && <p className="text-xs text-green-800">PDF leído visualmente a partir de sus páginas.</p>}
+                  {analysisResult.reading_mode === 'vision' && <p className="text-xs text-green-800">Documento leído visualmente.</p>}
                   <div className="grid grid-cols-2 gap-2 text-xs text-stone-600">
                     {analysisResult.supplier_name && <div><span className="block text-stone-400">Proveedor detectado</span>{analysisResult.supplier_name}</div>}
                     {analysisResult.quote_number && <div><span className="block text-stone-400">N.º presupuesto</span>{analysisResult.quote_number}</div>}
@@ -543,7 +544,7 @@ export default function BudgetPDFs() {
           <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setEditingPdf(null)} disabled={uploading}>Cancelar</Button><Button type="submit" disabled={uploading}>{uploading ? 'Guardando…' : 'Guardar'}</Button></div>
         </form>
       </Modal>
-      <ConfirmDialog open={Boolean(deletingPdf)} title="Eliminar presupuesto" message={`¿Eliminar “${deletingPdf?.name || ''}”? También se borrará el PDF almacenado.`} onCancel={() => setDeletingPdf(null)} onConfirm={() => handleDelete(deletingPdf)} />
+      <ConfirmDialog open={Boolean(deletingPdf)} title="Eliminar presupuesto" message={`¿Eliminar “${deletingPdf?.name || ''}”? También se borrará el documento almacenado.`} onCancel={() => setDeletingPdf(null)} onConfirm={() => handleDelete(deletingPdf)} />
     </div>
   )
 }

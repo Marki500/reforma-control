@@ -72,10 +72,21 @@ export default function Dashboard() {
       const { data: userData } = await supabase.auth.getUser()
       if (!userData?.user) return
 
-      const { data: materials, error } = await supabase
-        .from('materials')
-        .select('*, material_categories(name)')
-        .order('created_at', { ascending: false })
+      // These reads are independent: wait for one network round trip rather
+      // than serializing every section of the dashboard.
+      const results = await Promise.allSettled([
+        supabase.from('materials').select('*, material_categories(name)').order('created_at', { ascending: false }),
+        supabase.from('expenses').select('amount, paid_amount'),
+        supabase.from('budget_pdfs').select('total_amount').eq('status', 'Aceptado'),
+        getCategoryBudgets(),
+        supabase.from('notes').select('id, content, created_at').eq('category', 'Resumen').order('created_at', { ascending: false }),
+        getDashboardGridConfig(), getDashboardGridCells(), getBudgetPDFs(),
+      ])
+      const read = index => {
+        if (results[index].status === 'rejected') throw results[index].reason
+        return results[index].value
+      }
+      const { data: materials, error } = read(0)
 
       if (error) throw error
 
@@ -94,9 +105,8 @@ export default function Dashboard() {
       setMaterialsLoaded(true)
       setRecentMaterials(list.slice(0, 5))
 
-      const { data: expenses, error: expensesError } = await supabase
-        .from('expenses')
-        .select('amount, paid_amount')
+      const { data: expenses, error: expensesError } = results[1].status === 'fulfilled'
+        ? results[1].value : { error: results[1].reason }
       if (expensesError) {
         setExpenseSummary(null)
         setExpenseError('No se pudieron cargar los gastos y pagos. Los importes no están disponibles.')
@@ -104,7 +114,8 @@ export default function Dashboard() {
         setExpenseSummary(recordedExpensesSummary(expenses || []))
       }
 
-      const { data: accepted, error: acceptedError } = await supabase.from('budget_pdfs').select('total_amount').eq('status', 'Aceptado')
+      const { data: accepted, error: acceptedError } = results[2].status === 'fulfilled'
+        ? results[2].value : { error: results[2].reason }
       setAcceptedTotal(acceptedError ? null : (accepted || []).reduce((sum, item) => sum + (Number(item.total_amount) || 0), 0))
 
       // Group spending by category (only counted materials)
@@ -129,7 +140,7 @@ export default function Dashboard() {
       )
 
       // Load budgets
-      const budgetList = await getCategoryBudgets()
+      const budgetList = read(3)
       const budgetMap = {}
       for (const b of budgetList) {
         budgetMap[b.category_id] = b.budget_amount
@@ -137,23 +148,19 @@ export default function Dashboard() {
       setBudgets(budgetMap)
 
       // Load resumen notes
-      const { data: notes, error: notesError } = await supabase
-        .from('notes')
-        .select('id, content, created_at')
-        .eq('category', 'Resumen')
-        .order('created_at', { ascending: false })
+      const { data: notes, error: notesError } = read(4)
       if (notesError) throw notesError
       setResumenNotes(notes || [])
 
       // Load grid config
-      const config = await getDashboardGridConfig()
+      const config = read(5)
       if (config?.num_columns) setGridConfig(config)
-      const cells = await getDashboardGridCells()
+      const cells = read(6)
       setGridCells(cells)
 
       // Load PDFs per category
       const pdfMap = {}
-      const allPdfs = await getBudgetPDFs()
+      const allPdfs = read(7)
       for (const pdf of allPdfs) {
         if (!pdf.category_id) continue
         ;(pdfMap[pdf.category_id] ||= []).push(pdf)

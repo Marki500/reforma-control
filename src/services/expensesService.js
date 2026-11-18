@@ -1,16 +1,15 @@
 import { supabase } from './supabaseClient'
 import { getCurrentProjectId } from './workspaceService'
-import { phasesOf, phasePaid, phaseDue } from '../utils/paymentPhases'
+import { phasePaid, phaseDue } from '../utils/paymentPhases'
+import { expenseAmounts } from '../utils/expenses'
 
 function payloadFrom(form) {
   return {
     title: form.title.trim(), category: form.category, vendor: form.vendor.trim(),
-    budgeted_amount: Number(form.budgeted_amount) || 0,
-    amount: Number(form.amount) || 0, paid_amount: Number(form.paid_amount) || 0,
+    ...expenseAmounts(form),
     expense_date: form.expense_date || null, due_date: form.due_date || null,
     payer_user_id: form.payer_user_id || null, room_id: form.room_id || null, supplier_id: form.supplier_id || null,
     notes: form.notes.trim(), updated_at: new Date().toISOString(),
-    payment_phases: phasesOf(form).map(phase => ({ ...phase, title: phase.title.trim(), amount: Number(phase.amount) })),
     payment_plan_version: form.payment_plan_version ?? 0,
   }
 }

@@ -6,7 +6,7 @@ export async function createMaterial(material) {
   const { data, error } = await supabase
     .from('materials')
     .insert([material])
-    .select()
+    .select('*, rooms(name), material_categories(name)')
     .single()
 
   if (error) throw error
@@ -18,7 +18,7 @@ export async function updateMaterial(id, updates) {
     .from('materials')
     .update(updates)
     .eq('id', id)
-    .select()
+    .select('*, rooms(name), material_categories(name)')
     .single()
 
   if (error) throw error

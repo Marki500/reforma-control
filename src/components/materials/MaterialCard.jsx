@@ -15,6 +15,8 @@ export default function MaterialCard({ material, onEdit, onDelete, onToggleCount
         {material.main_image_url ? (
           <img
             src={material.main_image_url}
+            loading="lazy"
+            decoding="async"
             alt={material.name}
             className="h-full w-full object-cover transition-all duration-500 group-hover:scale-110"
             onError={(e) => { e.target.style.display = 'none' }}

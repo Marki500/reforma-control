@@ -53,6 +53,8 @@ export default function MaterialsTable({ materials, onEdit, onDelete, onToggleCo
                     {material.main_image_url ? (
                       <img
                         src={material.main_image_url}
+                        loading="lazy"
+                        decoding="async"
                         alt={material.name}
                         className="h-full w-full object-cover"
                       />

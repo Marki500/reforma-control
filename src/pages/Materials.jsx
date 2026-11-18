@@ -1,5 +1,5 @@
 import { normalizeStorageRecord } from '../utils/storageUrl'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, useDeferredValue } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../services/supabaseClient'
 import { getCurrentProjectId } from '../services/workspaceService'
@@ -36,6 +36,10 @@ export default function Materials() {
   const [loadError, setLoadError] = useState('')
   const [searchParams, setSearchParams] = useSearchParams()
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search') || '')
+
+  const deferredSearch = useDeferredValue(searchQuery)
+  const [page, setPage] = useState(1)
+  const pageSize = 24
 
   const [materials, setMaterials] = useState([])
   const [categories, setCategories] = useState([])
@@ -99,28 +103,35 @@ export default function Materials() {
   }, [searchParams, setSearchParams])
 
   // Filter materials client-side for search
-  const filteredMaterials = materials.filter((m) => {
-    if (filters.category_id && m.category_id !== filters.category_id) return false
-    if (filters.room_id && m.room_id !== filters.room_id) return false
-    if (filters.status && m.status !== filters.status) return false
-    if (filters.priority && m.priority !== filters.priority) return false
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase()
-      const match =
-        (m.name || '').toLowerCase().includes(q) ||
-        (m.brand || '').toLowerCase().includes(q) ||
-        (m.model || '').toLowerCase().includes(q) ||
-        (m.store_name || '').toLowerCase().includes(q)
-      if (!match) return false
-    }
-    return true
-  })
+  const filteredMaterials = useMemo(() => {
+    const q = deferredSearch.toLowerCase()
+    return materials.filter((m) => {
+      if (filters.category_id && m.category_id !== filters.category_id) return false
+      if (filters.room_id && m.room_id !== filters.room_id) return false
+      if (filters.status && m.status !== filters.status) return false
+      if (filters.priority && m.priority !== filters.priority) return false
+      if (q) {
+        const match =
+          (m.name || '').toLowerCase().includes(q) ||
+          (m.brand || '').toLowerCase().includes(q) ||
+          (m.model || '').toLowerCase().includes(q) ||
+          (m.store_name || '').toLowerCase().includes(q)
+        if (!match) return false
+      }
+      return true
+    })
+  }, [materials, filters, deferredSearch])
+
+  useEffect(() => { setPage(1) }, [filters, deferredSearch])
+  const pageCount = Math.max(1, Math.ceil(filteredMaterials.length / pageSize))
+  const currentPage = Math.min(page, pageCount)
+  const visibleMaterials = filteredMaterials.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   // Calculate total (only materials with count_in_total)
-  const totalCost = filteredMaterials.reduce(
+  const totalCost = useMemo(() => filteredMaterials.reduce(
     (sum, m) => sum + materialEstimate(m),
     0
-  )
+  ), [filteredMaterials])
 
   async function handleSave(formData, imageFile) {
     setOperationError('')
@@ -144,16 +155,21 @@ export default function Materials() {
         main_image_url: mainImageUrl,
       }
 
+      let saved
       if (editingMaterial?.id) {
-        await updateMaterial(editingMaterial.id, materialPayload)
+        saved = await updateMaterial(editingMaterial.id, materialPayload)
         if (uploadedImageUrl && editingMaterial.main_image_url !== uploadedImageUrl) await removeStoredFile('material-images', editingMaterial.main_image_url).catch(() => {})
       } else {
-        await createMaterial(materialPayload)
+        saved = await createMaterial(materialPayload)
+        setPage(1)
       }
 
+      const record = normalizeStorageRecord(saved)
+      setMaterials(previous => editingMaterial?.id
+        ? previous.map(item => item.id === record.id ? record : item)
+        : [record, ...previous])
       setFormOpen(false)
       setEditingMaterial(null)
-      await loadData()
     } catch (err) {
       if (uploadedImageUrl) await removeStoredFile('material-images', uploadedImageUrl).catch(() => {})
       setOperationError(err.message || 'No se pudo guardar el material.')
@@ -171,8 +187,8 @@ export default function Materials() {
     if (!confirmDelete) return
     try {
       await deleteMaterial(confirmDelete)
+      setMaterials(previous => previous.filter(item => item.id !== confirmDelete.id))
       setConfirmDelete(null)
-      await loadData()
     } catch (err) {
       setOperationError(err.message || 'No se pudo eliminar el material y su archivo.')
       console.error('Error deleting material:', err)
@@ -337,7 +353,7 @@ export default function Materials() {
         </div>
       ) : viewMode === 'cards' ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filteredMaterials.map((material) => (
+          {visibleMaterials.map((material) => (
             <MaterialCard
               key={material.id}
               material={material}
@@ -350,12 +366,20 @@ export default function Materials() {
         </div>
       ) : (
         <MaterialsTable
-          materials={filteredMaterials}
+          materials={visibleMaterials}
           onEdit={handleEdit}
           onDelete={handleDelete}
           onToggleCount={handleToggleCount}
           onDuplicate={handleDuplicate}
         />
+      )}
+
+      {!loading && !loadError && filteredMaterials.length > pageSize && (
+        <nav aria-label="Paginación de materiales" className="flex flex-wrap items-center justify-center gap-3">
+          <Button variant="secondary" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Anterior</Button>
+          <p role="status" className="text-sm text-stone-600">{(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filteredMaterials.length)} de {filteredMaterials.length} materiales</p>
+          <Button variant="secondary" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>Siguiente</Button>
+        </nav>
       )}
 
       {/* Material Form Modal */}

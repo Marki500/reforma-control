@@ -1,5 +1,7 @@
 ﻿import sharp from 'sharp'
-import { fetchRemote } from './remoteFetch.js'
+import { fetchRemote, normalizeRemoteUrl } from './remoteFetch.js'
+import { boundedMaterialImageUrl } from '../src/utils/materialImages.js'
+export { boundedMaterialImageUrl } from '../src/utils/materialImages.js'
 
 export const materialImageLimit = 12 * 1024 * 1024
 
@@ -24,13 +26,19 @@ export async function optimizeMaterialImage(buffer) {
     return { data, width: info.width, height: info.height, originalSize: buffer.length, size: data.length }
   } catch (error) {
     if (error instanceof MaterialImageError) throw error
-    throw new MaterialImageError('No se pudo procesar la imagen. Revisa el archivo o usa otra imagen JPG, PNG, WebP o AVIF.', 415)
+    const oversized = /pixel limit/i.test(error.message || '')
+    const failure = new MaterialImageError(oversized
+      ? 'La imagen original supera los 40 millones de píxeles. Usa una versión de menor resolución.'
+      : 'No se pudo procesar la imagen. Revisa el archivo o usa otra imagen JPG, PNG, WebP o AVIF.', oversized ? 413 : 415)
+    failure.code = oversized ? 'IMAGE_TOO_MANY_PIXELS' : /codec|unsupported|not installed/i.test(error.message || '') ? 'IMAGE_DECODER_UNAVAILABLE' : 'IMAGE_PROCESSING_FAILED'
+    failure.cause = error
+    throw failure
   }
 }
 
 export async function downloadMaterialImage(url) {
   if (typeof url !== 'string' || url.length > 8192) throw new MaterialImageError('La URL de la imagen no es válida.')
-  const result = await fetchRemote(url, {
+  const result = await fetchRemote(boundedMaterialImageUrl(normalizeRemoteUrl(url)), {
     useNativeFetch: true, maxBytes: materialImageLimit, timeoutMs: 15000,
     allowedContentTypes: ['image'],
     headers: { Accept: 'image/avif,image/webp,image/*', 'User-Agent': 'Mozilla/5.0' },

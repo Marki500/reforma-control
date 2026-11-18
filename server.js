@@ -112,7 +112,7 @@ app.get('/api/health', (_req, res) => {
   res.status(200).json({
     status: 'ok',
     release: 'pdf-vision-v1',
-    features: { ai_pdf_vision: 1, ai_extraction_validation: 1, ai_invoice_async: 1, ai_budget_async: 6, ai_usage_limits: 1, project_invitation_email: 1, project_comments: 1, product_import: 2, material_images: 1 },
+    features: { ai_pdf_vision: 1, ai_extraction_validation: 1, ai_invoice_async: 1, ai_budget_async: 6, ai_usage_limits: 1, project_invitation_email: 1, project_comments: 1, product_import: 2, material_images: 2 },
     product_import: { transport: 'native-fetch-pinned', diagnostics: 1 },
     ai: { provider: aiProvider, model: selectedModel, configured, free_only: aiFreeOnly, ...(aiProvider === 'groq' ? { fallback: openRouterApiKey ? 'openrouter/free' : null } : {}) },
     mail: { provider: 'mailjet', configured: Boolean(mailjetApiKey && mailjetSecretKey && appPublicUrl) },

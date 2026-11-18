@@ -1,3 +1,4 @@
+import { boundedMaterialImageUrl } from '../../utils/materialImages'
 import { Package, ExternalLink, Edit3, Trash2, Heart, DollarSign, Copy } from 'lucide-react'
 import { Badge } from '../ui/Badge'
 import { formatCurrency } from '../../utils/formatCurrency'
@@ -14,7 +15,7 @@ export default function MaterialCard({ material, onEdit, onDelete, onToggleCount
       <div className="relative aspect-[4/3] overflow-hidden bg-stone-50">
         {material.main_image_url ? (
           <img
-            src={material.main_image_url}
+            src={boundedMaterialImageUrl(material.main_image_url)}
             loading="lazy"
             decoding="async"
             alt={material.name}

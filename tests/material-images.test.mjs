@@ -5,7 +5,7 @@ import dns from 'node:dns/promises'
 import express from 'express'
 import { once } from 'node:events'
 import { randomBytes } from 'node:crypto'
-import { optimizeMaterialImage, downloadMaterialImage, materialImageLimit } from '../server/materialImages.js'
+import { optimizeMaterialImage, downloadMaterialImage, materialImageLimit, boundedMaterialImageUrl } from '../server/materialImages.js'
 import { registerMaterialImageRoutes } from '../server/materialImageRoutes.js'
 import { isOptimizedMaterialImage } from '../src/utils/materialImages.js'
 
@@ -175,4 +175,42 @@ test('authenticated upload, URL copy and existing conversion use the same optimi
     material = null
     assert.equal((await post(route, '{}')).status, 404)
   } finally { await new Promise(resolve => server.close(resolve)) }
+})
+
+
+test('ADEO originals are downloaded at bounded resolution without changing other providers', () => {
+  const original = 'https://media.adeo.com/media/3459612/media.jpg'
+  const bounded = new URL(boundedMaterialImageUrl(original))
+  assert.equal(bounded.hostname, 'media.adeo.com')
+  assert.equal(bounded.pathname, '/media/3459612/media.jpg')
+  assert.equal(bounded.searchParams.get('width'), '1200')
+  assert.equal(bounded.searchParams.get('height'), '1200')
+  assert.equal(bounded.searchParams.get('format'), 'webp')
+  const oversized = new URL(boundedMaterialImageUrl(original + '?width=8192&height=8192&quality=100'))
+  assert.equal(oversized.searchParams.get('width'), '1200')
+  const small = new URL(boundedMaterialImageUrl(original + '?width=125&height=125'))
+  assert.equal(small.searchParams.get('width'), '125')
+  for (const url of ['https://shop.example/media.jpg?width=8192', 'https://media.adeo.com.evil.example/media/1/media.jpg']) assert.equal(boundedMaterialImageUrl(url), url)
+})
+
+test('download applies the ADEO bound before fetching the image', async t => {
+  t.mock.method(dns, 'lookup', async () => [{ address: '1.1.1.1', family: 4 }])
+  t.mock.method(globalThis, 'fetch', async url => {
+    assert.equal(url.searchParams.get('width'), '1200')
+    assert.equal(url.searchParams.get('height'), '1200')
+    return new Response('image bytes', { headers: { 'content-type': 'image/webp' } })
+  })
+  assert.equal((await downloadMaterialImage('https://media.adeo.com/media/3459612/media.jpg')).toString(), 'image bytes')
+})
+
+test('oversized pixel headers are rejected clearly without decoding huge image data', async () => {
+  const png = await sharp({ create: { width: 2, height: 2, channels: 3, background: 'white' } }).png().toBuffer()
+  png.writeUInt32BE(8192, 16); png.writeUInt32BE(8192, 20)
+  let crc = 0xffffffff
+  for (const byte of png.subarray(12, 29)) {
+    crc ^= byte
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0)
+  }
+  png.writeUInt32BE((crc ^ 0xffffffff) >>> 0, 29)
+  await assert.rejects(optimizeMaterialImage(png), error => error.status === 413 && /40 millones/.test(error.message))
 })

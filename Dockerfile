@@ -19,6 +19,7 @@ COPY --from=build /app/server.js ./
 COPY --from=build /app/server ./server
 COPY --from=build /app/scripts/diagnose-product-import.mjs ./scripts/diagnose-product-import.mjs
 COPY --from=build /app/src/utils/documentAnalysis.js ./src/utils/documentAnalysis.js
+COPY --from=build /app/src/utils/materialImages.js ./src/utils/materialImages.js
 
 ENV NODE_ENV=production
 

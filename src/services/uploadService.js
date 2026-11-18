@@ -18,11 +18,11 @@ async function authenticatedFetch(endpoint, { method = 'POST', body, headers = {
   const result = await response.json().catch(() => null)
   if (!response.ok) {
     const diagnosticId = result?.request_id || response.headers.get('x-request-id') || requestId
-    if (!result && [502, 504].includes(response.status)) {
-      throw new Error(`El servidor o el proxy tardó demasiado en responder. Diagnóstico: ${diagnosticId}`)
-    }
+    const proxyMessage = !result && response.status === 502
+      ? 'El servidor o el proxy devolvió un error de conexión (HTTP 502).'
+      : !result && response.status === 504 ? 'El servidor o el proxy tardó demasiado en responder (HTTP 504).' : null
     const reason = result?.code ? ` · ${result.code}` : ''
-    const error = new Error(`${result?.error || `La operación no se pudo completar (HTTP ${response.status}).`}${reason} · Diagnóstico: ${diagnosticId}`)
+    const error = new Error(`${result?.error || proxyMessage || `La operación no se pudo completar (HTTP ${response.status}).`}${reason} · Diagnóstico: ${diagnosticId}`)
     error.status = response.status
     error.stage = result?.stage || null
     error.requestId = diagnosticId

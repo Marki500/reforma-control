@@ -1,3 +1,4 @@
+import { boundedMaterialImageUrl } from '../../utils/materialImages'
 import { Package, ExternalLink, Edit3, Trash2, DollarSign, Copy } from 'lucide-react'
 import { Badge } from '../ui/Badge'
 import { formatCurrency } from '../../utils/formatCurrency'
@@ -52,7 +53,7 @@ export default function MaterialsTable({ materials, onEdit, onDelete, onToggleCo
                   <div className="h-10 w-10 overflow-hidden rounded-lg bg-stone-100">
                     {material.main_image_url ? (
                       <img
-                        src={material.main_image_url}
+                        src={boundedMaterialImageUrl(material.main_image_url)}
                         loading="lazy"
                         decoding="async"
                         alt={material.name}

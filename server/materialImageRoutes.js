@@ -50,9 +50,10 @@ export function registerMaterialImageRoutes(app, { requireSession, getRequestPro
       catch (error) {
         const status = error.status || 502
         console.warn('[material images:error]', { requestId: req.requestId, stage: req.imageStage, status,
-          upstreamStatus: error.diagnostic?.upstreamStatus || null, networkCode: error.diagnostic?.networkCode || null, timings: req.imageTimings })
+          upstreamStatus: error.diagnostic?.upstreamStatus || null, networkCode: error.diagnostic?.networkCode || null,
+          decoderReason: req.imageStage === 'compression' ? error.cause?.message?.replace(/https?:\/\/\S+/g, '[url]').slice(0, 240) || null : null, timings: req.imageTimings })
         diagnostic(req, res.status(status), { error: error.status ? error.message : 'No se pudo optimizar la imagen. Inténtalo de nuevo.',
-          request_id: req.requestId, stage: req.imageStage || null, upstream_status: error.diagnostic?.upstreamStatus || null })
+          request_id: req.requestId, code: error.code || null, stage: req.imageStage || null, upstream_status: error.diagnostic?.upstreamStatus || null })
       } finally { activeUsers.delete(id) }
     }
   }

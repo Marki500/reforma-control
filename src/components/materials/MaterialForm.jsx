@@ -1,3 +1,4 @@
+import { boundedMaterialImageUrl } from '../../utils/materialImages'
 import { useState, useEffect } from 'react'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
@@ -125,7 +126,7 @@ export default function MaterialForm({
           onClick={() => document.getElementById('image-input')?.click()}
         >
           {imagePreview ? (
-            <img src={imagePreview} alt="Preview" className="max-h-48 rounded-lg object-cover" />
+            <img src={boundedMaterialImageUrl(imagePreview)} alt="Preview" className="max-h-48 rounded-lg object-cover" />
           ) : (
             <div className="text-center">
               <Upload size={24} className="mx-auto text-stone-400" />

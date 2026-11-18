@@ -1,14 +1,14 @@
 import { memberName } from '../utils/memberName'
 import { useEffect, useMemo, useState } from 'react'
 import { PaymentProgress, PaymentPhasesEditor } from '../components/expenses/PaymentPhases'
-import { phasesOf, phasePaid, phaseDue, validatePaymentPhases } from '../utils/paymentPhases'
+import { phasesOf, phasePaid, phaseDue } from '../utils/paymentPhases'
 import { Link, useSearchParams } from 'react-router-dom'
 import { expenseInvoice } from '../utils/invoices'
 import { Plus, Pencil, Trash2, Receipt, WalletCards } from 'lucide-react'
 import { getRooms } from '../services/materialsService'
 import { deleteExpense, getExpenses, saveExpense } from '../services/expensesService'
 import { getSuppliers } from '../services/suppliersService'
-import { expenseStatus, expenseTotals, filterExpenses } from '../utils/expenses'
+import { expenseAmounts, expenseStatus, expenseTotals, filterExpenses } from '../utils/expenses'
 import { formatCurrency } from '../utils/formatCurrency'
 import { recordedExpensesSummary } from '../utils/dashboardFinance'
 import { Modal } from '../components/ui/Modal'
@@ -66,13 +66,9 @@ export default function Expenses() {
   async function submit(event) {
     event.preventDefault()
     if (busy) return
-    const amount = Number(form.amount) || 0
-    const paid = phasesOf(form).length ? phasePaid(form.payment_phases) : Number(form.paid_amount) || 0
-    const phaseError = validatePaymentPhases(phasesOf(form), amount)
-    if (phaseError) { setFormError(phaseError); return }
     if (!form.title.trim()) { setFormError('Escribe un concepto.'); return }
-    if (amount < 0 || paid < 0 || Number(form.budgeted_amount || 0) < 0) { setFormError('Los importes no pueden ser negativos.'); return }
-    if (paid > amount) { setFormError('La cantidad pagada no puede superar el coste final.'); return }
+    try { expenseAmounts(form) }
+    catch (err) { setFormError(err.message); return }
     setBusy(true); setFormError('')
     try {
       const saved = await saveExpense(editing, form)
@@ -159,13 +155,14 @@ export default function Expenses() {
             <label className="block text-sm">Categoría<select className={fieldClass} value={form.category} onChange={event => change('category', event.target.value)}>{categories.map(value => <option key={value}>{value}</option>)}</select></label>
             <label className="block text-sm">Proveedor guardado<select className={fieldClass} value={form.supplier_id} onChange={event => { const id = event.target.value; const supplier = suppliers.find(item => item.id === id); setForm(previous => ({ ...previous, supplier_id: id, vendor: supplier?.name || previous.vendor })) }}><option value="">Sin proveedor asociado</option>{suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
             <label className="block text-sm">Nombre en factura<input className={fieldClass} value={form.vendor} maxLength={200} onChange={event => change('vendor', event.target.value)} /></label>
-            <label className="block text-sm">Importe previsto<input type="number" min="0" step="0.01" className={fieldClass} value={form.budgeted_amount} onChange={event => change('budgeted_amount', event.target.value)} /></label>
-            <label className="block text-sm">Coste final<input type="number" min="0" step="0.01" className={fieldClass} disabled={Boolean(editingInvoice)} value={form.amount} onChange={event => change('amount', event.target.value)} /></label>
-            <label className="block text-sm">Cantidad pagada<input type="number" min="0" step="0.01" className={fieldClass} disabled={phasesOf(form).length > 0} value={form.paid_amount} onChange={event => change('paid_amount', event.target.value)} /></label>
+            <label className="block text-sm">Importe previsto<input type="text" inputMode="decimal" className={fieldClass} value={form.budgeted_amount} onChange={event => change('budgeted_amount', event.target.value)} /></label>
+            <label className="block text-sm">Coste final<input type="text" inputMode="decimal" className={fieldClass} disabled={Boolean(editingInvoice)} value={form.amount} onChange={event => change('amount', event.target.value)} /></label>
+            <label className="block text-sm">Cantidad pagada<input type="text" inputMode="decimal" className={fieldClass} disabled={phasesOf(form).length > 0} value={form.paid_amount} onChange={event => change('paid_amount', event.target.value)} /></label>
             <label className="block text-sm">Estancia<select className={fieldClass} value={form.room_id} onChange={event => change('room_id', event.target.value)}><option value="">Sin estancia</option>{rooms.map(room => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label>
             <label className="block text-sm">Fecha del gasto<input type="date" className={fieldClass} value={form.expense_date} onChange={event => change('expense_date', event.target.value)} /></label>
             <label className="block text-sm">Fecha límite de pago<input type="date" className={fieldClass} disabled={phasesOf(form).length > 0} value={form.due_date} onChange={event => change('due_date', event.target.value)} /></label>
           </div>
+          <p className="text-xs text-stone-500">Puedes escribir 1234,56, 1234.56 o 1.234,56 €. Usa como máximo dos decimales; los puntos o comas seguidos de tres cifras se interpretan como miles.</p>
           <PaymentPhasesEditor form={form} onChange={change} />
           <label className="block text-sm">Notas<textarea rows={3} className={fieldClass} value={form.notes} onChange={event => change('notes', event.target.value)} /></label>
           <div className="flex justify-end gap-2"><Button type="button" variant="secondary" disabled={busy} onClick={() => setOpen(false)}>Cancelar</Button><Button type="submit" disabled={busy}>{busy ? 'Guardando…' : 'Guardar gasto'}</Button></div>

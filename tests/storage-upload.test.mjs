@@ -128,7 +128,7 @@ test('uploads require a valid user and forward that user to Storage', async () =
     assert.ok(ready, log)
     const health = await (await fetch(`${base}/api/health`)).json()
     assert.deepEqual(health.ai, { provider: 'openrouter', model: 'openrouter/free', configured: true, free_only: true })
-    for (const endpoint of ['upload-file', 'upload-pdf', 'upload-document', 'upload-image', 'import-product', 'extract-inspiration', 'analyze-budget']) {
+    for (const endpoint of ['upload-file', 'upload-pdf', 'upload-document', 'upload-image', 'material-images', 'materials/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/optimize-image', 'import-product', 'extract-inspiration', 'analyze-budget']) {
       const anonymous = await fetch(`${base}/api/${endpoint}`, { method: 'POST' })
       assert.equal(anonymous.status, 401)
       const invalid = await fetch(`${base}/api/${endpoint}`, { method: 'POST', headers: { Authorization: 'Bearer invalid' } })

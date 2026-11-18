@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url'
 import { randomUUID } from 'node:crypto'
 import * as cheerio from 'cheerio'
 import multer from 'multer'
+import { registerMaterialImageRoutes } from './server/materialImageRoutes.js'
 import { inspectPdf, prepareDocumentContent, PdfDocumentError } from './server/pdfDocument.js'
 import { analysisProblem, assertReadableAnalysis } from './src/utils/documentAnalysis.js'
 import { canonicalizeRemoteUrl, fetchRemote, normalizeRemoteUrl, RemoteFetchError } from './server/remoteFetch.js'
@@ -111,7 +112,7 @@ app.get('/api/health', (_req, res) => {
   res.status(200).json({
     status: 'ok',
     release: 'pdf-vision-v1',
-    features: { ai_pdf_vision: 1, ai_extraction_validation: 1, ai_invoice_async: 1, ai_budget_async: 6, ai_usage_limits: 1, project_invitation_email: 1, project_comments: 1, product_import: 2 },
+    features: { ai_pdf_vision: 1, ai_extraction_validation: 1, ai_invoice_async: 1, ai_budget_async: 6, ai_usage_limits: 1, project_invitation_email: 1, project_comments: 1, product_import: 2, material_images: 1 },
     product_import: { transport: 'native-fetch-pinned', diagnostics: 1 },
     ai: { provider: aiProvider, model: selectedModel, configured, free_only: aiFreeOnly, ...(aiProvider === 'groq' ? { fallback: openRouterApiKey ? 'openrouter/free' : null } : {}) },
     mail: { provider: 'mailjet', configured: Boolean(mailjetApiKey && mailjetSecretKey && appPublicUrl) },
@@ -971,6 +972,8 @@ app.post('/api/upload-document', requireSession, documentUpload.single('file'), 
     res.status(500).json({ error: error instanceof Error ? error.message : 'Error al subir el documento' })
   }
 })
+
+registerMaterialImageRoutes(app, { requireSession, getRequestProjectId, supabaseUrl, supabaseKey })
 
 // Serve uploaded images (local fallback)
 app.use('/uploads', express.static(uploadsDir))

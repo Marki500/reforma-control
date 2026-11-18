@@ -1,4 +1,4 @@
-﻿import test from 'node:test'
+import test from 'node:test'
 import assert from 'node:assert/strict'
 import { build } from 'esbuild'
 
@@ -9,6 +9,9 @@ test('materials page limits rendering, searches all items and updates without a 
     slots: [], cursor: 0, effects: [], reads: 0, writes: 0,
     data: Array.from({ length: 30 }, (_, i) => ({ id: `m${i}`, name: `Material ${i}`, price: 10, quantity: 1, count_in_total: true })),
   }
+  h.data[0].main_image_url = 'https://shop.example/one.jpg'
+  h.data[1].main_image_url = 'https://shop.example/two.jpg'
+  h.sources = []; h.optimized = []
   const hooks = `
     const h = globalThis.__materialsTest;
     export function useState(initial) {
@@ -38,7 +41,13 @@ test('materials page limits rendering, searches all items and updates without a 
     export async function createMaterial(data) { h.writes++; return { ...data, id: 'new' } }
     export async function deleteMaterial() { h.writes++ }
     export async function toggleCountInTotal() { h.writes++ }
-    export async function uploadImage() { throw new Error('Unexpected upload') }
+    const localImage = 'https://api-reforma.noxumlab.com/storage/v1/object/public/material-images/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/optimized/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb.webp';
+    export async function optimizeSavedMaterialImage(id) {
+      h.optimized.push(id);
+      if (id === 'm1') throw new Error('Shop blocked');
+      return { material: { id, main_image_url: localImage } };
+    }
+    export async function uploadImage(source) { h.sources.push(source); return localImage }
     export async function removeStoredFile() {}
     export const supabase = { from() { return { select() { return this }, order() { h.reads++; return Promise.resolve({ data: h.data }) } } } };
   `
@@ -72,6 +81,14 @@ test('materials page limits rendering, searches all items and updates without a 
     assert.equal(h.reads, 3)
     assert.equal(cards(tree).length, 24)
     assert.match(JSON.stringify(tree), /300,00/)
+    await find(tree, n => n.props?.children?.[0]?.startsWith?.('Optimizar')).onClick()
+    tree = render()
+    assert.deepEqual(h.optimized, ['m0', 'm1'])
+    assert.match(cards(tree)[0].props.material.main_image_url, /optimized/)
+    assert.equal(cards(tree)[1].props.material.main_image_url, 'https://shop.example/two.jpg')
+    assert.equal(cards(tree)[0].props.material.price, 10)
+    assert.match(JSON.stringify(tree), /No se pudieron optimizar 1/)
+    assert.equal(h.reads, 3)
     find(tree, n => n.props?.children === 'Siguiente').onClick()
     tree = render()
     assert.equal(cards(tree).length, 6)
@@ -103,6 +120,16 @@ test('materials page limits rendering, searches all items and updates without a 
     tree = render()
     assert.equal(cards(tree)[0].props.material.id, 'new')
     assert.match(JSON.stringify(tree), /320,00/)
+    assert.equal(h.reads, 3)
+    await find(tree, n => n.props?.onSave).onSave({ name: 'Remote photo', price: 30, quantity: 1, main_image_url: 'https://shop.example/new.jpg' }, null)
+    tree = render()
+    assert.equal(h.sources[0], 'https://shop.example/new.jpg')
+    assert.match(cards(tree)[0].props.material.main_image_url, /optimized/)
+    const photo = { size: 1000 }
+    await find(tree, n => n.props?.onSave).onSave({ name: 'Uploaded photo', price: 30, quantity: 1 }, photo)
+    tree = render()
+    assert.equal(h.sources[1], photo)
+    assert.match(cards(tree)[0].props.material.main_image_url, /optimized/)
     assert.equal(h.reads, 3)
   } finally { delete globalThis.__materialsTest }
 })

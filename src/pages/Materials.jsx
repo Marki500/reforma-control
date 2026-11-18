@@ -1,4 +1,5 @@
 import { normalizeStorageRecord } from '../utils/storageUrl'
+import { isOptimizedMaterialImage } from '../utils/materialImages'
 import { useState, useEffect, useCallback, useMemo, useDeferredValue } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../services/supabaseClient'
@@ -8,6 +9,7 @@ import {
   updateMaterial,
   deleteMaterial,
   uploadImage,
+  optimizeSavedMaterialImage,
   getCategories,
   getRooms,
   toggleCountInTotal,
@@ -56,6 +58,9 @@ export default function Materials() {
   const [formOpen, setFormOpen] = useState(false)
   const [editingMaterial, setEditingMaterial] = useState(null)
   const [saving, setSaving] = useState(false)
+
+  const [imageOptimization, setImageOptimization] = useState(null)
+  const [imageNotice, setImageNotice] = useState('')
 
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null)
@@ -134,6 +139,7 @@ export default function Materials() {
   ), [filteredMaterials])
 
   async function handleSave(formData, imageFile) {
+    if (imageOptimization) return
     setOperationError('')
     setSaving(true)
     let uploadedImageUrl = null
@@ -142,8 +148,8 @@ export default function Materials() {
 
       let mainImageUrl = formData.main_image_url
 
-      if (imageFile) {
-        mainImageUrl = await uploadImage(imageFile, projectId)
+      if (imageFile || (mainImageUrl && !isOptimizedMaterialImage(mainImageUrl))) {
+        mainImageUrl = await uploadImage(imageFile || mainImageUrl)
         uploadedImageUrl = mainImageUrl
       }
 
@@ -158,7 +164,8 @@ export default function Materials() {
       let saved
       if (editingMaterial?.id) {
         saved = await updateMaterial(editingMaterial.id, materialPayload)
-        if (uploadedImageUrl && editingMaterial.main_image_url !== uploadedImageUrl) await removeStoredFile('material-images', editingMaterial.main_image_url).catch(() => {})
+        // An automatically converted source may still be used by a duplicate.
+        if (imageFile && uploadedImageUrl && editingMaterial.main_image_url !== uploadedImageUrl) await removeStoredFile('material-images', editingMaterial.main_image_url).catch(() => {})
       } else {
         saved = await createMaterial(materialPayload)
         setPage(1)
@@ -171,7 +178,8 @@ export default function Materials() {
       setFormOpen(false)
       setEditingMaterial(null)
     } catch (err) {
-      if (uploadedImageUrl) await removeStoredFile('material-images', uploadedImageUrl).catch(() => {})
+      // A network error may arrive after the record was saved. Preserve its image.
+      if (uploadedImageUrl && /^[0-9A-Z]{5}$/.test(err.code || '')) await removeStoredFile('material-images', uploadedImageUrl).catch(() => {})
       setOperationError(err.message || 'No se pudo guardar el material.')
       console.error('Error saving material:', err)
     } finally {
@@ -179,12 +187,35 @@ export default function Materials() {
     }
   }
 
+  const imagesToOptimize = useMemo(() => materials.filter(item => item.main_image_url && !isOptimizedMaterialImage(item.main_image_url)), [materials])
+
+  async function handleOptimizeImages() {
+    if (imageOptimization || saving) return
+    const targets = [...imagesToOptimize]
+    if (!targets.length) return
+    setImageOptimization({ done: 0, total: targets.length })
+    setImageNotice('')
+    let failed = 0
+    for (const [index, material] of targets.entries()) {
+      try {
+        const result = await optimizeSavedMaterialImage(material.id)
+        const record = normalizeStorageRecord(result.material)
+        setMaterials(previous => previous.map(item => item.id === record.id ? { ...item, main_image_url: record.main_image_url } : item))
+      } catch { failed++ }
+      setImageOptimization({ done: index + 1, total: targets.length })
+    }
+    setImageOptimization(null)
+    setImageNotice(failed
+      ? `Se han procesado ${targets.length - failed} imágenes. No se pudieron optimizar ${failed}; conservan su imagen anterior. Puedes reintentarlo o subir otra imagen.`
+      : 'Las imágenes de los materiales ya están optimizadas y guardadas en tu almacenamiento.')
+  }
+
   async function handleDelete(material) {
-    setConfirmDelete(material)
+    if (!imageOptimization) setConfirmDelete(material)
   }
 
   async function confirmDeleteMaterial() {
-    if (!confirmDelete) return
+    if (!confirmDelete || imageOptimization) return
     try {
       await deleteMaterial(confirmDelete)
       setMaterials(previous => previous.filter(item => item.id !== confirmDelete.id))
@@ -209,6 +240,7 @@ export default function Materials() {
   }
 
   function handleDuplicate(material) {
+    if (imageOptimization) return
     const { id, created_at, user_id, ...rest } = material
     setEditingMaterial({
       ...rest,
@@ -219,6 +251,7 @@ export default function Materials() {
   }
 
   function handleEdit(material) {
+    if (imageOptimization) return
     setEditingMaterial(material)
     setFormOpen(true)
   }
@@ -256,6 +289,7 @@ export default function Materials() {
           <Button
             variant="secondary"
             size="sm"
+            disabled={Boolean(imageOptimization)}
             onClick={() => setImportModalOpen(true)}
           >
             <ExternalLink size={16} />
@@ -263,6 +297,7 @@ export default function Materials() {
           </Button>
           <Button
             size="sm"
+            disabled={Boolean(imageOptimization)}
             onClick={() => {
               setEditingMaterial(null)
               setFormOpen(true)
@@ -273,6 +308,17 @@ export default function Materials() {
           </Button>
         </div>
       </div>
+
+      {!loading && !loadError && (imagesToOptimize.length > 0 || imageOptimization || imageNotice) && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white p-4">
+          <div className="text-sm text-stone-600">
+            <p>Guarda copias ligeras de las imágenes para cargar los materiales más rápido.</p>
+            {imageNotice && <p role="status" className="mt-1">{imageNotice}</p>}
+            {imageOptimization && <p role="status" className="mt-1">Optimizando {imageOptimization.done} de {imageOptimization.total}… Mantén esta pantalla abierta.</p>}
+          </div>
+          {imagesToOptimize.length > 0 && <Button variant="secondary" size="sm" disabled={Boolean(imageOptimization) || saving || formOpen || Boolean(confirmDelete)} onClick={handleOptimizeImages}>Optimizar imágenes ({imagesToOptimize.length})</Button>}
+        </div>
+      )}
 
       {/* Filters */}
       <MaterialsFilters
@@ -335,6 +381,7 @@ export default function Materials() {
           <div className="mt-4 flex flex-col justify-center gap-3 sm:flex-row">
             <Button
               variant="secondary"
+              disabled={Boolean(imageOptimization)}
               onClick={() => setImportModalOpen(true)}
             >
               <ExternalLink size={16} />

@@ -117,6 +117,7 @@ export default function MaterialForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       {/* Image upload */}
+      <p className="text-xs text-stone-500">Las imágenes se comprimen y guardan en tu almacenamiento al guardar el material, también las importadas desde una tienda.</p>
       <div>
         <label className="mb-1.5 block text-sm font-medium text-stone-700">Imagen</label>
         <div
@@ -139,6 +140,13 @@ export default function MaterialForm({
             onChange={handleImageSelect}
           />
         </div>
+        {imagePreview && <button type="button" disabled={saving} onClick={() => {
+          handleChange('main_image_url', '')
+          setImageFile(null)
+          setImagePreview('')
+          const input = document.getElementById('image-input')
+          if (input) input.value = ''
+        }} className="mt-2 min-h-11 text-sm text-stone-600 underline">Quitar imagen</button>}
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

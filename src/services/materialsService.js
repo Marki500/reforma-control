@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient'
+import { authenticatedUpload, authenticatedRequest } from './uploadService'
 import { removeStoredFile } from './storageCleanup'
 import { getCurrentProjectId } from './workspaceService'
 
@@ -35,21 +36,22 @@ export async function deleteMaterial(material) {
   if (error) throw error
 }
 
-export async function uploadImage(file, userId) {
-  const fileExt = file.name.split('.').pop()
-  const fileName = `${userId}/${Date.now()}.${fileExt}`
+export async function uploadImage(source) {
+  let body, headers = {}
+  if (typeof source === 'string') {
+    body = JSON.stringify({ url: source })
+    headers['Content-Type'] = 'application/json'
+  } else {
+    if (source.size > 12 * 1024 * 1024) throw new Error('La imagen no puede superar 12 MB.')
+    body = new FormData()
+    body.append('file', source)
+  }
+  const result = await authenticatedUpload('/api/material-images', body, headers)
+  return result.url
+}
 
-  const { error } = await supabase.storage
-    .from('material-images')
-    .upload(fileName, file)
-
-  if (error) throw error
-
-  const { data: urlData } = supabase.storage
-    .from('material-images')
-    .getPublicUrl(fileName)
-
-  return urlData.publicUrl
+export async function optimizeSavedMaterialImage(id) {
+  return authenticatedRequest(`/api/materials/${encodeURIComponent(id)}/optimize-image`, '{}', { 'Content-Type': 'application/json' })
 }
 
 export async function getCategories() {

@@ -273,3 +273,11 @@ Tras el redeploy, añade una imagen ficticia, edita su fase y estancia, comprueb
 ## Activar el editor de planos 2D
 
 Ejecuta una vez supabase/migrations/00033_interactive_floor_plans.sql en Supabase Studio > SQL Editor antes del redeploy. Añade plan_data a floor_plans y conserva los planos e imágenes existentes y los permisos por proyecto. El script antiguo npm run migrate no incluye esta migración. Consulta PLANOS_2D.md para uso, pruebas y límites de la primera versión.
+
+### Imágenes de materiales optimizadas
+
+Al guardar un material, los archivos subidos y las imágenes importadas desde tiendas pasan por el mismo servicio autenticado (`/api/material-images`). Se guardan en `material-images/<proyecto>/optimized/<uuid>.webp`: WebP con calidad 80, máximo 1200 × 1200, sin ampliar imágenes pequeñas, con orientación corregida y sin metadatos EXIF. Se admiten entradas JPG, PNG, WebP, AVIF y GIF (primer fotograma), hasta 12 MB y 40 millones de píxeles. La descarga de URLs reutiliza la validación de DNS y redirecciones públicas del importador.
+
+Para el catálogo existente, pulsa **Optimizar imágenes** en Materiales y mantén esa pantalla abierta. Se procesa un material cada vez. Las imágenes ya optimizadas se omiten; si una tienda bloquea la descarga, el material conserva su enlace anterior y puede reintentarse o subirse una imagen manualmente. Solo se sustituye el enlace si no ha cambiado durante el proceso. No se eliminan los originales del lote porque otros materiales o proyectos podrían usarlos.
+
+No requiere migración SQL ni variables nuevas. `npm ci` instala `sharp`, también en el Docker Alpine existente; el servidor reenvía el token del usuario a Storage y PostgREST. Tras desplegar, `/api/health` incluye `features.material_images: 1`. Las imágenes nuevas tienen nombres únicos y caché de un año. Esto afecta a Materiales; el resto de adjuntos mantiene su flujo anterior.

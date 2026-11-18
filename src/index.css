@@ -82,3 +82,16 @@ button:active { transform: translateY(1px); }
 }
 
 [data-document-review] [aria-invalid="true"] { border-color: #d2a14b; background-color: #fffbeb; }
+
+/* Temporary A/B probe, enabled only by the diagnostic checkbox. */
+html.materials-performance-probe *,
+html.materials-performance-probe *::before,
+html.materials-performance-probe *::after {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  filter: none !important;
+  box-shadow: none !important;
+  transition: none !important;
+  animation: none !important;
+  scroll-behavior: auto !important;
+}

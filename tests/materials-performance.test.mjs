@@ -25,6 +25,7 @@ test('materials page limits rendering, searches all items and updates without a 
       if (!h.slots[i] || changed(h.slots[i].deps, deps)) h.slots[i] = { deps, value: fn() };
       return h.slots[i].value;
     }
+    export const useRef = initial => useState({ current: initial })[0];
     export const useCallback = (fn, deps) => useMemo(() => fn, deps);
     export function useEffect(fn, deps) {
       const i = h.cursor++;
@@ -88,6 +89,16 @@ test('materials page limits rendering, searches all items and updates without a 
     assert.equal(cards(tree)[1].props.material.main_image_url, 'https://shop.example/two.jpg')
     assert.equal(cards(tree)[0].props.material.price, 10)
     assert.match(JSON.stringify(tree), /No se pudieron optimizar 1/)
+    assert.match(JSON.stringify(tree), /Shop blocked/)
+    const collect = find(tree, n => typeof n.props?.collect === 'function').collect
+    const report = collect()
+    assert.equal(report.optimization_failures[0].material, 'Material 1')
+    assert.equal(report.optimization_failures[0].reason, 'Shop blocked')
+    assert.equal(typeof report.load.materials_ms, 'number')
+    tree.props.onErrorCapture({ type: 'error', target: { tagName: 'IMG', src: 'https://shop.example/photo?secret=value', alt: 'Failed photo' } })
+    const imageReport = collect()
+    assert.equal(imageReport.image_errors[0].name, 'Failed photo')
+    assert.equal(JSON.stringify(imageReport).includes('secret=value'), false)
     assert.equal(h.reads, 3)
     find(tree, n => n.props?.children === 'Siguiente').onClick()
     tree = render()

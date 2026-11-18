@@ -1,4 +1,4 @@
-﻿import multer from 'multer'
+import multer from 'multer'
 import { randomUUID } from 'node:crypto'
 import { materialImageLimit, optimizeMaterialImage, downloadMaterialImage, MaterialImageError } from './materialImages.js'
 
@@ -10,13 +10,32 @@ export function registerMaterialImageRoutes(app, { requireSession, getRequestPro
   const headersFor = req => ({ Authorization: req.uploadAuthorization, apikey: supabaseKey })
   const optimized = (url, projectId) => typeof url === 'string' && url.startsWith(`${publicBase}${projectId}/optimized/`) && /^[0-9a-f-]+\.webp$/.test(url.slice(`${publicBase}${projectId}/optimized/`.length))
 
+  function startRequest(req, _res, next) {
+    req.imageStarted = performance.now()
+    req.imageTimings = {}
+    next()
+  }
+
+  async function stage(req, name, read) {
+    req.imageStage = name
+    const started = performance.now()
+    try { return await read() }
+    finally { req.imageTimings[name] = Math.round(performance.now() - started) }
+  }
+
+  function diagnostic(req, res, payload) {
+    const timings = { ...req.imageTimings, total: Math.round(performance.now() - req.imageStarted) }
+    res.set('Server-Timing', Object.entries(timings).map(([name, ms]) => `${name};dur=${ms}`).join(', '))
+    return res.json({ ...payload, timings_ms: timings })
+  }
+
   async function store(req, source) {
-    const result = await optimizeMaterialImage(source)
+    const result = await stage(req, 'compression', () => optimizeMaterialImage(source))
     const key = `${await getRequestProjectId(req)}/optimized/${randomUUID()}.webp`
-    const response = await fetch(`${supabaseUrl}/storage/v1/object/material-images/${key}`, {
+    const response = await stage(req, 'storage', () => fetch(`${supabaseUrl}/storage/v1/object/material-images/${key}`, {
       method: 'POST', headers: { ...headersFor(req), 'Content-Type': 'image/webp', 'Cache-Control': 'public, max-age=31536000', 'x-upsert': 'false' },
       body: result.data, signal: AbortSignal.timeout(20000),
-    })
+    }))
     if (!response.ok) throw new MaterialImageError('No se pudo guardar la imagen optimizada en el almacenamiento.', 502)
     return { url: `${publicBase}${key}`, size: result.size, original_size: result.originalSize, width: result.width, height: result.height }
   }
@@ -26,41 +45,46 @@ export function registerMaterialImageRoutes(app, { requireSession, getRequestPro
       const id = req.authUser.id
       if (activeUsers.has(id) || activeUsers.size >= 2) return res.status(429).json({ error: 'Hay imágenes procesándose. Espera unos segundos e inténtalo de nuevo.' })
       activeUsers.add(id)
+      req.imageTimings.session_and_request = Math.round(performance.now() - req.imageStarted)
       try { await handler(req, res) }
       catch (error) {
-        res.status(error.status || 502).json({ error: error.status ? error.message : 'No se pudo optimizar la imagen. Inténtalo de nuevo.', request_id: req.requestId })
+        const status = error.status || 502
+        console.warn('[material images:error]', { requestId: req.requestId, stage: req.imageStage, status,
+          upstreamStatus: error.diagnostic?.upstreamStatus || null, networkCode: error.diagnostic?.networkCode || null, timings: req.imageTimings })
+        diagnostic(req, res.status(status), { error: error.status ? error.message : 'No se pudo optimizar la imagen. Inténtalo de nuevo.',
+          request_id: req.requestId, stage: req.imageStage || null, upstream_status: error.diagnostic?.upstreamStatus || null })
       } finally { activeUsers.delete(id) }
     }
   }
 
-  app.post('/api/material-images', requireSession, upload.single('file'), limited(async (req, res) => {
-    const projectId = await getRequestProjectId(req)
-    if (!req.file && optimized(req.body?.url, projectId)) return res.json({ url: req.body.url, reused: true })
-    const source = req.file?.buffer || await downloadMaterialImage(req.body?.url)
-    res.json(await store(req, source))
+  app.post('/api/material-images', startRequest, requireSession, upload.single('file'), limited(async (req, res) => {
+    const projectId = await stage(req, 'project', () => getRequestProjectId(req))
+    if (!req.file && optimized(req.body?.url, projectId)) return diagnostic(req, res, { url: req.body.url, reused: true })
+    const source = req.file?.buffer || await stage(req, 'download', () => downloadMaterialImage(req.body?.url))
+    diagnostic(req, res, await store(req, source))
   }))
 
   // Convert an existing material only if its image has not changed meanwhile.
-  app.post('/api/materials/:id/optimize-image', requireSession, limited(async (req, res) => {
+  app.post('/api/materials/:id/optimize-image', startRequest, requireSession, limited(async (req, res) => {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) throw new MaterialImageError('El material no es válido.')
-    const projectId = await getRequestProjectId(req)
+    const projectId = await stage(req, 'project', () => getRequestProjectId(req))
     const query = `${supabaseUrl}/rest/v1/materials?id=eq.${req.params.id}&project_id=eq.${projectId}`
-    const response = await fetch(`${query}&select=*,rooms(name),material_categories(name)`, { headers: headersFor(req), signal: AbortSignal.timeout(15000) })
+    const response = await stage(req, 'material_read', () => fetch(`${query}&select=*,rooms(name),material_categories(name)`, { headers: headersFor(req), signal: AbortSignal.timeout(15000) }))
     if (!response.ok) throw new MaterialImageError('No se pudo consultar el material.', 502)
     const [material] = await response.json()
     if (!material) throw new MaterialImageError('El material ya no está disponible en esta reforma.', 404)
-    if (!material.main_image_url || optimized(material.main_image_url, projectId)) return res.json({ material, skipped: true })
-    const result = await store(req, await downloadMaterialImage(material.main_image_url))
+    if (!material.main_image_url || optimized(material.main_image_url, projectId)) return diagnostic(req, res, { material, skipped: true })
+    const result = await store(req, await stage(req, 'download', () => downloadMaterialImage(material.main_image_url)))
     // Never erase an old source: another material or project may still use it.
-    const patch = await fetch(`${query}&main_image_url=eq.${encodeURIComponent(material.main_image_url)}&select=*,rooms(name),material_categories(name)`, {
+    const patch = await stage(req, 'material_update', () => fetch(`${query}&main_image_url=eq.${encodeURIComponent(material.main_image_url)}&select=*,rooms(name),material_categories(name)`, {
       method: 'PATCH', headers: { ...headersFor(req), 'Content-Type': 'application/json', Prefer: 'return=representation' },
       body: JSON.stringify({ main_image_url: result.url }), signal: AbortSignal.timeout(15000),
-    })
+    }))
     // Keep the new object after an ambiguous write failure: the patch may have
     // committed even if the response was lost. Do not break a saved reference.
     if (!patch.ok) throw new MaterialImageError('No se pudo actualizar la imagen del material. El enlace anterior se conserva si no se guardó el cambio.', 502)
     const [saved] = await patch.json()
     if (!saved) throw new MaterialImageError('La imagen o el material han cambiado. Actualiza la lista antes de reintentarlo.', 409)
-    res.json({ material: saved, ...result })
+    diagnostic(req, res, { material: saved, ...result })
   }))
 }

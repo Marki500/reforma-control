@@ -1,6 +1,8 @@
 import { normalizeStorageRecord } from '../utils/storageUrl'
 import { isOptimizedMaterialImage } from '../utils/materialImages'
-import { useState, useEffect, useCallback, useMemo, useDeferredValue } from 'react'
+import { measureRead, materialsDiagnosticReport } from '../utils/materialsDiagnostics'
+import MaterialsDiagnostics from '../components/materials/MaterialsDiagnostics'
+import { useState, useEffect, useCallback, useMemo, useDeferredValue, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../services/supabaseClient'
 import { getCurrentProjectId } from '../services/workspaceService'
@@ -61,21 +63,41 @@ export default function Materials() {
 
   const [imageOptimization, setImageOptimization] = useState(null)
   const [imageNotice, setImageNotice] = useState('')
+  const [imageFailures, setImageFailures] = useState([])
+  const loadMetrics = useRef(null)
+  const imageMetrics = useRef(new Map())
+  const mainThread = useRef({ supported: false, count: 0, total_ms: 0, longest_ms: 0 })
+  useEffect(() => {
+    if (typeof PerformanceObserver === 'undefined' || !PerformanceObserver.supportedEntryTypes?.includes('longtask')) return
+    mainThread.current.supported = true
+    const observer = new PerformanceObserver(list => {
+      for (const entry of list.getEntries()) {
+        mainThread.current.count++
+        mainThread.current.total_ms += Math.round(entry.duration)
+        mainThread.current.longest_ms = Math.max(mainThread.current.longest_ms, Math.round(entry.duration))
+      }
+    })
+    observer.observe({ type: 'longtask', buffered: true })
+    return () => observer.disconnect()
+  }, [])
 
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null)
 
   const loadData = useCallback(async () => {
+    const started = performance.now()
+    const timings = {}
+    loadMetrics.current = null
     try {
       setLoading(true)
       setLoadError('')
       const [materialsData, categoriesData, roomsData] = await Promise.all([
-        supabase
+        measureRead('materials_ms', () => supabase
           .from('materials')
           .select('*, rooms(name), material_categories(name)')
-          .order('created_at', { ascending: false }),
-        getCategories(),
-        getRooms(),
+          .order('created_at', { ascending: false }), timings),
+        measureRead('categories_ms', getCategories, timings),
+        measureRead('rooms_ms', getRooms, timings),
       ])
 
       if (materialsData.error) throw materialsData.error
@@ -86,6 +108,7 @@ export default function Materials() {
       setLoadError(err.message || 'No se pudieron cargar los materiales. Comprueba la conexión e inténtalo de nuevo.')
       console.error('Error loading materials:', err)
     } finally {
+      loadMetrics.current = { started_ms: Math.round(started), ...timings, total_ms: Math.round(performance.now() - started) }
       setLoading(false)
     }
   }, [])
@@ -189,24 +212,45 @@ export default function Materials() {
 
   const imagesToOptimize = useMemo(() => materials.filter(item => item.main_image_url && !isOptimizedMaterialImage(item.main_image_url)), [materials])
 
+  function collectDiagnostic() {
+    return { main_thread: { ...mainThread.current }, ...materialsDiagnosticReport({ load: loadMetrics.current, images: [...imageMetrics.current.values()], failures: imageFailures,
+      materialCount: materials.length, pageCount, resources: performance.getEntriesByType('resource') }) }
+  }
+
+  function recordImage(event) {
+    const image = event.target
+    if (image.tagName !== 'IMG') return
+    const url = image.currentSrc || image.src
+    const resource = performance.getEntriesByName(url).at(-1)
+    let host = ''
+    try { host = new URL(url).hostname } catch {}
+    imageMetrics.current.set(url, { name: image.alt, host, failed: event.type === 'error', ms: resource ? Math.round(resource.duration) : null })
+  }
+
   async function handleOptimizeImages() {
     if (imageOptimization || saving) return
     const targets = [...imagesToOptimize]
     if (!targets.length) return
     setImageOptimization({ done: 0, total: targets.length })
     setImageNotice('')
+    setImageFailures([])
+    const failures = []
     let failed = 0
     for (const [index, material] of targets.entries()) {
       try {
         const result = await optimizeSavedMaterialImage(material.id)
         const record = normalizeStorageRecord(result.material)
         setMaterials(previous => previous.map(item => item.id === record.id ? { ...item, main_image_url: record.main_image_url } : item))
-      } catch { failed++ }
+      } catch (error) {
+        failed++
+        failures.push({ material: material.name, reason: error.message || 'Error desconocido', status: error.status || null, stage: error.stage || null, request_id: error.requestId || null })
+      }
       setImageOptimization({ done: index + 1, total: targets.length })
     }
     setImageOptimization(null)
+    setImageFailures(failures)
     setImageNotice(failed
-      ? `Se han procesado ${targets.length - failed} imágenes. No se pudieron optimizar ${failed}; conservan su imagen anterior. Puedes reintentarlo o subir otra imagen.`
+      ? `Se han procesado ${targets.length - failed} imágenes. No se pudieron optimizar ${failed}; Revisa el motivo debajo antes de reintentar o subir otra imagen.`
       : 'Las imágenes de los materiales ya están optimizadas y guardadas en tu almacenamiento.')
   }
 
@@ -274,7 +318,7 @@ export default function Materials() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6" onLoadCapture={recordImage} onErrorCapture={recordImage}>
       {operationError && <div role="alert" className="fixed bottom-4 left-4 right-4 z-[100] rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 shadow-lg">{operationError}<button type="button" onClick={() => setOperationError('')} className="ml-3 font-semibold underline">Cerrar</button></div>}
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -314,11 +358,14 @@ export default function Materials() {
           <div className="text-sm text-stone-600">
             <p>Guarda copias ligeras de las imágenes para cargar los materiales más rápido.</p>
             {imageNotice && <p role="status" className="mt-1">{imageNotice}</p>}
+            {imageFailures.length > 0 && <ul className="mt-2 space-y-2">{imageFailures.map((failure, index) => <li key={index} className="break-words"><strong>{failure.material}:</strong> {failure.reason}</li>)}</ul>}
             {imageOptimization && <p role="status" className="mt-1">Optimizando {imageOptimization.done} de {imageOptimization.total}… Mantén esta pantalla abierta.</p>}
           </div>
           {imagesToOptimize.length > 0 && <Button variant="secondary" size="sm" disabled={Boolean(imageOptimization) || saving || formOpen || Boolean(confirmDelete)} onClick={handleOptimizeImages}>Optimizar imágenes ({imagesToOptimize.length})</Button>}
         </div>
       )}
+
+      <MaterialsDiagnostics collect={collectDiagnostic} />
 
       {/* Filters */}
       <MaterialsFilters

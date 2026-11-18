@@ -73,6 +73,8 @@ test('only optimizer URLs in our storage are treated as ready', () => {
 test('authenticated upload, URL copy and existing conversion use the same optimizer and preserve failed sources', async t => {
   const png = await sharp({ create: { width: 1800, height: 1600, channels: 3, background: 'blue' } }).png().toBuffer()
   const realFetch = httpFetch
+  const diagnosticLogs = []
+  t.mock.method(console, 'warn', (...args) => diagnosticLogs.push(args))
   const uploads = [], patches = [], queries = []
   let remoteCalls = 0, blockImage = false, patchConflict = false, patchFailure = false
   let material = { id: materialId, main_image_url: imageUrl, title: 'Tile' }
@@ -132,6 +134,8 @@ test('authenticated upload, URL copy and existing conversion use the same optimi
     assert.equal(fileResponse.status, 200, await fileResponse.clone().text())
     const file = await fileResponse.json()
     assert.equal(file.width, 1200)
+    assert.equal(typeof file.timings_ms.compression, 'number')
+    assert.match(fileResponse.headers.get('server-timing'), /compression;dur=/)
     assert.equal(isOptimizedMaterialImage(file.url, storage), true)
     const copied = await post('/api/material-images', JSON.stringify({ url: imageUrl }))
     assert.equal(copied.status, 200)
@@ -150,7 +154,13 @@ test('authenticated upload, URL copy and existing conversion use the same optimi
     assert.equal(remoteCalls, calls)
     material.main_image_url = imageUrl
     blockImage = true
-    assert.equal((await post(route, '{}')).status, 422)
+    const blocked = await post(route, '{}')
+    assert.equal(blocked.status, 422)
+    const blockedDiagnostic = await blocked.json()
+    assert.equal(blockedDiagnostic.stage, 'download')
+    assert.equal(blockedDiagnostic.upstream_status, 403)
+    assert.equal(typeof blockedDiagnostic.timings_ms.download, 'number')
+    assert.equal(JSON.stringify(diagnosticLogs).includes('user-token'), false)
     assert.equal(material.main_image_url, imageUrl)
     assert.equal(patches.length, 1)
     blockImage = false; patchConflict = true

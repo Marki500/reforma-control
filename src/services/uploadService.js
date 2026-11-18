@@ -22,7 +22,11 @@ async function authenticatedFetch(endpoint, { method = 'POST', body, headers = {
       throw new Error(`El servidor o el proxy tardó demasiado en responder. Diagnóstico: ${diagnosticId}`)
     }
     const reason = result?.code ? ` · ${result.code}` : ''
-    throw new Error(`${result?.error || `La operación no se pudo completar (HTTP ${response.status}).`}${reason} · Diagnóstico: ${diagnosticId}`)
+    const error = new Error(`${result?.error || `La operación no se pudo completar (HTTP ${response.status}).`}${reason} · Diagnóstico: ${diagnosticId}`)
+    error.status = response.status
+    error.stage = result?.stage || null
+    error.requestId = diagnosticId
+    throw error
   }
   if (!result) throw new Error('El servidor devolvió una respuesta no válida.')
   return result

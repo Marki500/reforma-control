@@ -1,6 +1,6 @@
 import MaterialPurchaseButton from './MaterialPurchaseButton'
 import { boundedMaterialImageUrl } from '../../utils/materialImages'
-import { Package, ExternalLink, Edit3, Trash2, Heart, DollarSign, Copy } from 'lucide-react'
+import { Package, ExternalLink, Edit3, Trash2, DollarSign, Copy } from 'lucide-react'
 import { Badge } from '../ui/Badge'
 import { formatCurrency } from '../../utils/formatCurrency'
 import { extractDomain } from '../../utils/extractDomain'
@@ -11,16 +11,16 @@ export default function MaterialCard({ material, onEdit, onDelete, onToggleCount
   const sameStore = store.toLowerCase().replace(/^www\./, '') === domain.toLowerCase().replace(/^www\./, '')
   const storeLabel = [store, sameStore ? '' : domain].filter(Boolean).join(' · ')
   return (
-    <div className="group overflow-hidden rounded-2xl border border-stone-100 bg-white shadow-sm transition-all duration-200 hover:shadow-lg hover:-translate-y-1 hover:border-stone-200">
+    <div className="group flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white transition-colors hover:border-stone-300">
       {/* Image */}
-      <div className="relative aspect-[4/3] overflow-hidden bg-stone-50">
+      <div className="relative aspect-[4/3] shrink-0 overflow-hidden border-b border-stone-100 bg-white">
         {material.main_image_url ? (
           <img
             src={boundedMaterialImageUrl(material.main_image_url)}
             loading="lazy"
             decoding="async"
             alt={material.name}
-            className="h-full w-full object-cover transition-all duration-500 group-hover:scale-110"
+            className="h-full w-full object-contain p-6"
             onError={(e) => { e.target.style.display = 'none' }}
           />
         ) : null}
@@ -45,13 +45,13 @@ export default function MaterialCard({ material, onEdit, onDelete, onToggleCount
         )}
 
         {/* Image overlay actions */}
-        <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-2 bg-gradient-to-t from-black/45 to-transparent p-3 opacity-100 transition-all duration-200 sm:inset-0 sm:justify-center sm:bg-black/0 sm:p-0 sm:opacity-0 sm:group-hover:bg-black/30 sm:group-hover:opacity-100 sm:focus-within:bg-black/30 sm:focus-within:opacity-100">
+        <div className="absolute bottom-3 right-3 flex items-center gap-2">
           {material.product_url && (
             <a
               href={material.product_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-xl bg-white/90 px-3 py-2 text-xs font-medium text-stone-700 shadow-sm backdrop-blur transition-colors hover:bg-white"
+              className="inline-flex min-h-9 items-center rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-medium text-stone-700 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-olive hover:bg-white"
             >
               <ExternalLink size={14} className="inline-block mr-1" />
               Producto
@@ -59,7 +59,7 @@ export default function MaterialCard({ material, onEdit, onDelete, onToggleCount
           )}
           <button
             onClick={() => onEdit(material)}
-            className="rounded-xl bg-white/90 px-3 py-2 text-xs font-medium text-stone-700 shadow-sm backdrop-blur transition-colors hover:bg-white"
+            className="inline-flex min-h-9 items-center rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-medium text-stone-700 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-olive hover:bg-white"
           >
             <Edit3 size={14} className="inline-block mr-1" />
             Editar
@@ -68,11 +68,11 @@ export default function MaterialCard({ material, onEdit, onDelete, onToggleCount
       </div>
 
       {/* Content */}
-      <div className="space-y-3 p-4">
+      <div className="flex flex-1 flex-col gap-3 p-4">
         {/* Name & meta row */}
         <div className="space-y-1">
           <div className="space-y-2">
-            <h3 title={material.name} className="break-words text-sm font-semibold leading-relaxed text-stone-800">{material.name}</h3>
+            <h3 title={material.name} className="min-h-[3.75rem] line-clamp-3 break-words text-sm font-semibold leading-5 text-stone-800">{material.name}</h3>
           </div>
 
           {(material.brand || material.model) && (
@@ -91,75 +91,74 @@ export default function MaterialCard({ material, onEdit, onDelete, onToggleCount
         {/* Technical specs */}
         {material.technical_specs && (
           <div className="rounded-lg bg-stone-50 px-3 py-2">
-            <p className="text-xs leading-relaxed text-stone-500 whitespace-pre-wrap">
+            <p title={material.technical_specs} className="line-clamp-2 text-xs leading-relaxed text-stone-500 whitespace-pre-wrap">
               {material.technical_specs}
             </p>
           </div>
         )}
 
-        {/* Price row */}
-        <div className="flex items-baseline justify-between">
-          <div className="flex items-baseline gap-2">
-            <span className="text-xl font-bold tabular-nums text-stone-800 tracking-tight">
-              {material.price ? formatCurrency(material.price) : '—'}
-            </span>
-            {material.quantity > 1 && (
-              <span className="rounded-md bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-500">
-                x{material.quantity}
+        <div className="mt-auto space-y-3 pt-2">
+          {/* Price row */}
+          <div className="flex min-h-8 flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+            <div className="flex items-baseline gap-2">
+              <span className="text-xl font-bold tabular-nums text-stone-800 tracking-tight">
+                {material.price ? formatCurrency(material.price) : '—'}
+              </span>
+              {material.quantity > 1 && (
+                <span className="rounded-md bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-500">
+                  x{material.quantity}
+                </span>
+              )}
+            </div>
+            {material.price && material.quantity > 1 && (
+              <span className="text-xs text-stone-600">
+                {formatCurrency(material.price * material.quantity)}
               </span>
             )}
           </div>
-          {material.price && material.quantity > 1 && (
-            <span className="text-xs text-stone-600">
-              {formatCurrency(material.price * material.quantity)}
-            </span>
-          )}
-        </div>
 
-        {/* Store */}
-        {storeLabel && <p className="break-words text-xs leading-relaxed text-stone-600">{storeLabel}</p>}
+          {/* Store */}
+          <p title={storeLabel} className="min-h-5 truncate text-xs leading-5 text-stone-500">{storeLabel || 'Sin tienda indicada'}</p>
 
-        {/* Favorite indicator */}
-        {material.status === 'Favorito' && (
-          <div className="flex items-center gap-1.5 text-xs text-gold">
-            <Heart size={12} className="fill-gold" />
-            <span>Favorito</span>
-          </div>
-        )}
-        <div className="grid gap-2 border-t border-stone-100 pt-3">
-          <MaterialPurchaseButton material={material} onPurchase={onPurchase} pending={purchasePending} disabled={purchaseDisabled} />
-          <div className="flex items-center justify-end gap-2">
-            {/* Count toggle */}
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onToggleCount?.(material) }}
-              className={`rounded-lg p-2 transition-all ${
-                material.count_in_total === false
-                  ? 'text-stone-500 hover:text-stone-700'
-                  : 'text-olive hover:text-stone-900'
-              }`}
-              title={material.count_in_total === false ? 'No cuenta en totales' : 'Cuenta en totales'}
-            >
-              <DollarSign size={14} />
-            </button>
-            {/* Duplicate */}
-            <button
-              type="button"
-              onClick={() => onDuplicate(material)}
-              className="rounded-lg p-2 text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-800"
-              title="Duplicar"
-            >
-              <Copy size={14} />
-            </button>
-            {/* Delete */}
-            <button
-              type="button"
-              onClick={() => onDelete(material)}
-              className="rounded-lg p-2 text-stone-500 transition-colors hover:bg-red-50 hover:text-red-700"
-              title="Eliminar"
-            >
-              <Trash2 size={14} />
-            </button>
+          <div className="grid gap-2 border-t border-stone-100 pt-3">
+            <MaterialPurchaseButton material={material} onPurchase={onPurchase} pending={purchasePending} disabled={purchaseDisabled} />
+            <div className="flex items-center gap-1">
+              {/* Count toggle */}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onToggleCount?.(material) }}
+                className={`mr-auto inline-flex min-h-11 whitespace-nowrap items-center gap-1 rounded-lg px-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-olive ${
+                  material.count_in_total === false
+                    ? 'text-stone-500 hover:text-stone-700'
+                    : 'text-olive hover:text-stone-900'
+                }`}
+                aria-pressed={material.count_in_total !== false}
+                title={material.count_in_total === false ? 'No cuenta en totales' : 'Cuenta en totales'}
+              >
+                <DollarSign size={14} aria-hidden="true" />
+                {material.count_in_total === false ? 'Fuera del total' : 'En el total'}
+              </button>
+              {/* Duplicate */}
+              <button
+                type="button"
+                onClick={() => onDuplicate(material)}
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-stone-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-olive transition-colors hover:bg-stone-100 hover:text-stone-800"
+                aria-label={`Duplicar: ${material.name}`}
+                title="Duplicar"
+              >
+                <Copy size={14} />
+              </button>
+              {/* Delete */}
+              <button
+                type="button"
+                onClick={() => onDelete(material)}
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-stone-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-olive transition-colors hover:bg-red-50 hover:text-red-700"
+                aria-label={`Eliminar: ${material.name}`}
+                title="Eliminar"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
           </div>
         </div>
       </div>

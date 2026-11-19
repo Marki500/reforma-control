@@ -19,7 +19,7 @@ export default function MaterialsFilters({
   const hasFilters = filters.category_id || filters.room_id || filters.status || filters.priority
 
   return (
-    <div className="rounded-2xl bg-white p-4 shadow-sm">
+    <div className="border-b border-stone-100 pb-4">
       <div className="flex min-h-[2.75rem] items-center gap-2 sm:min-h-0 sm:mb-3">
         <Filter size={16} className="text-stone-400" />
         <button type="button" onClick={() => setMobileOpen(value => !value)} className="flex flex-1 items-center gap-2 text-left text-sm font-medium text-stone-700 sm:pointer-events-none">
@@ -42,7 +42,7 @@ export default function MaterialsFilters({
         <select
           value={filters.category_id || ''}
           onChange={(e) => update('category_id', e.target.value)}
-          className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700 transition-colors focus:border-stone-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-stone-400/20"
+          className="min-h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700 transition-colors focus:border-stone-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-stone-400/20"
         >
           <option value="">Todas las categorías</option>
           {categories.map((cat) => (
@@ -53,7 +53,7 @@ export default function MaterialsFilters({
         <select
           value={filters.room_id || ''}
           onChange={(e) => update('room_id', e.target.value)}
-          className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700 transition-colors focus:border-stone-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-stone-400/20"
+          className="min-h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700 transition-colors focus:border-stone-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-stone-400/20"
         >
           <option value="">Todas las estancias</option>
           {rooms.map((room) => (
@@ -64,7 +64,7 @@ export default function MaterialsFilters({
         <select
           value={filters.status || ''}
           onChange={(e) => update('status', e.target.value)}
-          className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700 transition-colors focus:border-stone-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-stone-400/20"
+          className="min-h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700 transition-colors focus:border-stone-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-stone-400/20"
         >
           <option value="">Todos los estados</option>
           {statuses.map((s) => (
@@ -75,7 +75,7 @@ export default function MaterialsFilters({
         <select
           value={filters.priority || ''}
           onChange={(e) => update('priority', e.target.value)}
-          className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700 transition-colors focus:border-stone-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-stone-400/20"
+          className="min-h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700 transition-colors focus:border-stone-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-stone-400/20"
         >
           <option value="">Todas las prioridades</option>
           {priorities.map((p) => (

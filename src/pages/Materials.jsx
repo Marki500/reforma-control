@@ -403,62 +403,68 @@ export default function Materials() {
         </div>
       )}
 
-      <MaterialsDiagnostics collect={collectDiagnostic} />
+      <section aria-label="Buscar y filtrar materiales" className="space-y-4 rounded-2xl border border-stone-200 bg-white p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative min-w-0 flex-1"><Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" /><input type="search" aria-label="Buscar dentro de materiales" value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Buscar dentro de materiales…" className="min-h-[44px] w-full rounded-xl border border-stone-200 bg-white pl-10 pr-3 text-sm outline-none focus:border-terracotta" /></div>
 
-      {/* Filters */}
-      <MaterialsFilters
-        categories={categories}
-        rooms={rooms}
-        filters={filters}
-        onChange={setFilters}
-        onClear={() =>
-          setFilters({ category_id: '', room_id: '', status: '', priority: '' })
-        }
-      />
-      <div className="relative sm:max-w-md"><Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" /><input type="search" value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Buscar dentro de materiales…" className="min-h-[44px] w-full rounded-xl border border-stone-200 bg-white pl-10 pr-3 text-sm outline-none focus:border-terracotta" /></div>
-
-      {!loading && !loadError && (
-        <div role="group" aria-label="Filtrar materiales por estado" className="flex flex-wrap gap-2">
-          {[['', 'Todos'], ['Comprado', 'Comprados'], ['Recibido', 'Recibidos']].map(([status, label]) => (
-            <button
-              key={status}
-              type="button"
-              aria-pressed={filters.status === status}
-              onClick={() => setFilters(previous => ({ ...previous, status }))}
-              className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors ${filters.status === status ? 'bg-stone-700 text-white' : 'bg-white text-stone-600 hover:bg-stone-100'}`}
-            >
-              {label}
-              <span className={`rounded-full px-2 py-0.5 text-xs tabular-nums ${filters.status === status ? 'bg-white/20' : 'bg-stone-100'}`}>{statusCounts[status]}</span>
-            </button>
-          ))}
+        {/* View toggle */}
+        <div className="hidden shrink-0 items-center gap-1 rounded-xl bg-stone-100 p-1 sm:flex">
+          <button
+            type="button"
+            aria-label="Vista de tarjetas"
+            aria-pressed={viewMode === 'cards'}
+            onClick={() => setViewMode('cards')}
+            className={`inline-flex h-9 w-10 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-olive ${
+              viewMode === 'cards'
+                ? 'bg-white text-stone-800 shadow-sm'
+                : 'text-stone-400 hover:text-stone-600'
+            }`}
+          >
+            <LayoutGrid size={18} />
+          </button>
+          <button
+            type="button"
+            aria-label="Vista de tabla"
+            aria-pressed={viewMode === 'table'}
+            onClick={() => setViewMode('table')}
+            className={`inline-flex h-9 w-10 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-olive ${
+              viewMode === 'table'
+                ? 'bg-white text-stone-800 shadow-sm'
+                : 'text-stone-400 hover:text-stone-600'
+            }`}
+          >
+            <Table2 size={18} />
+          </button>
         </div>
-      )}
 
-      {/* View toggle */}
-      <div className="hidden items-center justify-end gap-1 sm:flex">
-        <button
-          aria-label="Vista de tarjetas"
-          onClick={() => setViewMode('cards')}
-          className={`rounded-lg p-2 transition-colors ${
-            viewMode === 'cards'
-              ? 'bg-stone-200 text-stone-700'
-              : 'text-stone-400 hover:text-stone-600'
-          }`}
-        >
-          <LayoutGrid size={18} />
-        </button>
-        <button
-          aria-label="Vista de tabla"
-          onClick={() => setViewMode('table')}
-          className={`rounded-lg p-2 transition-colors ${
-            viewMode === 'table'
-              ? 'bg-stone-200 text-stone-700'
-              : 'text-stone-400 hover:text-stone-600'
-          }`}
-        >
-          <Table2 size={18} />
-        </button>
-      </div>
+        </div>
+        <MaterialsFilters
+          categories={categories}
+          rooms={rooms}
+          filters={filters}
+          onChange={setFilters}
+          onClear={() =>
+            setFilters({ category_id: '', room_id: '', status: '', priority: '' })
+          }
+        />
+        {!loading && !loadError && (
+          <div role="group" aria-label="Filtrar materiales por estado" className="grid grid-cols-3 gap-1 rounded-xl bg-stone-100 p-1 sm:inline-flex">
+            {[['', 'Todos'], ['Comprado', 'Comprados'], ['Recibido', 'Recibidos']].map(([status, label]) => (
+              <button
+                key={status}
+                type="button"
+                aria-pressed={filters.status === status}
+                onClick={() => setFilters(previous => ({ ...previous, status }))}
+                className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-olive sm:gap-2 sm:px-4 sm:text-sm ${filters.status === status ? 'bg-white text-stone-800 shadow-sm' : 'text-stone-500 hover:text-stone-800'}`}
+              >
+                {label}
+                <span className={`rounded-full px-2 py-0.5 text-xs tabular-nums ${filters.status === status ? 'bg-olive-light text-stone-700' : 'bg-stone-200/60'}`}>{statusCounts[status]}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+      </section>
 
       {/* Content */}
       {loading ? (
@@ -501,7 +507,7 @@ export default function Materials() {
           </div>
         </div>
       ) : viewMode === 'cards' ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visibleMaterials.map((material) => (
             <MaterialCard
               key={material.id}
@@ -536,6 +542,8 @@ export default function Materials() {
           <Button variant="secondary" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>Siguiente</Button>
         </nav>
       )}
+
+      <MaterialsDiagnostics collect={collectDiagnostic} />
 
       {/* Material Form Modal */}
       <Modal

@@ -135,12 +135,11 @@ export default function Materials() {
   }, [searchParams, setSearchParams])
 
   // Filter materials client-side for search
-  const filteredMaterials = useMemo(() => {
+  const matchingMaterials = useMemo(() => {
     const q = deferredSearch.toLowerCase()
     return materials.filter((m) => {
       if (filters.category_id && m.category_id !== filters.category_id) return false
       if (filters.room_id && m.room_id !== filters.room_id) return false
-      if (filters.status && m.status !== filters.status) return false
       if (filters.priority && m.priority !== filters.priority) return false
       if (q) {
         const match =
@@ -152,7 +151,16 @@ export default function Materials() {
       }
       return true
     })
-  }, [materials, filters, deferredSearch])
+  }, [materials, filters.category_id, filters.room_id, filters.priority, deferredSearch])
+
+  const statusCounts = useMemo(() => ({
+    '': matchingMaterials.length,
+    Comprado: matchingMaterials.filter(material => material.status === 'Comprado').length,
+    Recibido: matchingMaterials.filter(material => material.status === 'Recibido').length,
+  }), [matchingMaterials])
+  const filteredMaterials = useMemo(() => filters.status
+    ? matchingMaterials.filter(material => material.status === filters.status)
+    : matchingMaterials, [matchingMaterials, filters.status])
 
   useEffect(() => { setPage(1) }, [filters, deferredSearch])
   const pageCount = Math.max(1, Math.ceil(filteredMaterials.length / pageSize))
@@ -409,6 +417,23 @@ export default function Materials() {
       />
       <div className="relative sm:max-w-md"><Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" /><input type="search" value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Buscar dentro de materiales…" className="min-h-[44px] w-full rounded-xl border border-stone-200 bg-white pl-10 pr-3 text-sm outline-none focus:border-terracotta" /></div>
 
+      {!loading && !loadError && (
+        <div role="group" aria-label="Filtrar materiales por estado" className="flex flex-wrap gap-2">
+          {[['', 'Todos'], ['Comprado', 'Comprados'], ['Recibido', 'Recibidos']].map(([status, label]) => (
+            <button
+              key={status}
+              type="button"
+              aria-pressed={filters.status === status}
+              onClick={() => setFilters(previous => ({ ...previous, status }))}
+              className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors ${filters.status === status ? 'bg-stone-700 text-white' : 'bg-white text-stone-600 hover:bg-stone-100'}`}
+            >
+              {label}
+              <span className={`rounded-full px-2 py-0.5 text-xs tabular-nums ${filters.status === status ? 'bg-white/20' : 'bg-stone-100'}`}>{statusCounts[status]}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* View toggle */}
       <div className="hidden items-center justify-end gap-1 sm:flex">
         <button
@@ -451,8 +476,8 @@ export default function Materials() {
           <Package size={48} className="mx-auto mb-4 text-stone-300" />
           <h2 className="text-lg font-semibold text-stone-700">No hay materiales</h2>
           <p className="mt-1 text-sm text-stone-500">
-            {searchQuery
-              ? 'No se encontraron materiales con esa búsqueda'
+            {searchQuery || Object.values(filters).some(Boolean)
+              ? 'No se encontraron materiales con estos filtros'
               : 'Empieza añadiendo tu primer material'}
           </p>
           <div className="mt-4 flex flex-col justify-center gap-3 sm:flex-row">

@@ -9,6 +9,7 @@ import { getCurrentProjectId } from '../services/workspaceService'
 import {
   createMaterial,
   updateMaterial,
+  updateMaterialStatus,
   deleteMaterial,
   uploadImage,
   optimizeSavedMaterialImage,
@@ -60,6 +61,9 @@ export default function Materials() {
   const [formOpen, setFormOpen] = useState(false)
   const [editingMaterial, setEditingMaterial] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [purchasingId, setPurchasingId] = useState(null)
+  const [purchaseNotice, setPurchaseNotice] = useState(null)
+  const purchaseRequest = useRef(false)
 
   const [imageOptimization, setImageOptimization] = useState(null)
   const [imageNotice, setImageNotice] = useState('')
@@ -162,7 +166,7 @@ export default function Materials() {
   ), [filteredMaterials])
 
   async function handleSave(formData, imageFile) {
-    if (imageOptimization) return
+    if (imageOptimization || purchaseRequest.current) return
     setOperationError('')
     setSaving(true)
     let uploadedImageUrl = null
@@ -228,7 +232,7 @@ export default function Materials() {
   }
 
   async function handleOptimizeImages() {
-    if (imageOptimization || saving) return
+    if (imageOptimization || saving || purchaseRequest.current) return
     const targets = [...imagesToOptimize]
     if (!targets.length) return
     setImageOptimization({ done: 0, total: targets.length })
@@ -255,18 +259,39 @@ export default function Materials() {
   }
 
   async function handleDelete(material) {
-    if (!imageOptimization) setConfirmDelete(material)
+    if (!imageOptimization && !purchaseRequest.current) setConfirmDelete(material)
   }
 
   async function confirmDeleteMaterial() {
-    if (!confirmDelete || imageOptimization) return
+    if (!confirmDelete || imageOptimization || purchaseRequest.current) return
     try {
       await deleteMaterial(confirmDelete)
       setMaterials(previous => previous.filter(item => item.id !== confirmDelete.id))
       setConfirmDelete(null)
+      setPurchaseNotice(previous => previous?.id === confirmDelete.id ? null : previous)
     } catch (err) {
       setOperationError(err.message || 'No se pudo eliminar el material y su archivo.')
       console.error('Error deleting material:', err)
+    }
+  }
+
+  async function handlePurchase(material, undo = false) {
+    if (purchaseRequest.current || imageOptimization || saving || formOpen || confirmDelete) return
+    if (!undo && ['Comprado', 'Recibido'].includes(material.status)) return
+    const previousStatus = undo ? purchaseNotice?.previousStatus : material.status ?? null
+    if (undo && purchaseNotice?.id !== material.id) return
+    purchaseRequest.current = true
+    setPurchasingId(material.id)
+    setOperationError('')
+    try {
+      const saved = await updateMaterialStatus(material.id, undo ? previousStatus : 'Comprado', undo ? 'Comprado' : previousStatus)
+      setMaterials(previous => previous.map(item => item.id === saved.id ? { ...item, status: saved.status } : item))
+      setPurchaseNotice(undo ? null : { id: material.id, name: material.name, previousStatus })
+    } catch (error) {
+      setOperationError(error.message || 'No se pudo actualizar el estado de compra.')
+    } finally {
+      purchaseRequest.current = false
+      setPurchasingId(null)
     }
   }
 
@@ -284,7 +309,7 @@ export default function Materials() {
   }
 
   function handleDuplicate(material) {
-    if (imageOptimization) return
+    if (imageOptimization || purchaseRequest.current) return
     const { id, created_at, user_id, ...rest } = material
     setEditingMaterial({
       ...rest,
@@ -295,7 +320,7 @@ export default function Materials() {
   }
 
   function handleEdit(material) {
-    if (imageOptimization) return
+    if (imageOptimization || purchaseRequest.current) return
     setEditingMaterial(material)
     setFormOpen(true)
   }
@@ -320,6 +345,11 @@ export default function Materials() {
   return (
     <div className="mx-auto max-w-6xl space-y-6" onLoadCapture={recordImage} onErrorCapture={recordImage}>
       {operationError && <div role="alert" className="fixed bottom-4 left-4 right-4 z-[100] rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 shadow-lg">{operationError}<button type="button" onClick={() => setOperationError('')} className="ml-3 font-semibold underline">Cerrar</button></div>}
+      {purchaseNotice && <div role="status" className="fixed bottom-24 left-4 right-4 z-[70] mx-auto flex max-w-xl flex-wrap items-center gap-3 rounded-xl border border-green-200 bg-white p-4 text-sm text-stone-700 shadow-lg lg:bottom-5">
+        <span className="min-w-0 flex-1 break-words"><strong>{purchaseNotice.name}</strong> marcado como comprado.</span>
+        <button type="button" disabled={Boolean(purchasingId) || Boolean(imageOptimization) || saving || formOpen || Boolean(confirmDelete)} onClick={() => handlePurchase(purchaseNotice, true)} className="min-h-11 px-2 font-semibold text-olive underline disabled:opacity-50">Deshacer</button>
+        <button type="button" aria-label="Cerrar confirmación de compra" onClick={() => setPurchaseNotice(null)} className="min-h-11 px-2 text-stone-500">Cerrar</button>
+      </div>}
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -455,6 +485,9 @@ export default function Materials() {
               onDelete={handleDelete}
               onToggleCount={handleToggleCount}
               onDuplicate={handleDuplicate}
+              onPurchase={handlePurchase}
+              purchasePending={purchasingId === material.id}
+              purchaseDisabled={Boolean(purchasingId) || Boolean(imageOptimization) || saving || formOpen || Boolean(confirmDelete)}
             />
           ))}
         </div>
@@ -465,6 +498,9 @@ export default function Materials() {
           onDelete={handleDelete}
           onToggleCount={handleToggleCount}
           onDuplicate={handleDuplicate}
+          onPurchase={handlePurchase}
+          purchasingId={purchasingId}
+          purchaseDisabled={Boolean(purchasingId) || Boolean(imageOptimization) || saving || formOpen || Boolean(confirmDelete)}
         />
       )}
 

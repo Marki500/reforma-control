@@ -7,11 +7,12 @@ import { build } from 'esbuild'
 test('materials page limits rendering, searches all items and updates without a full reload', async () => {
   const h = globalThis.__materialsTest = {
     slots: [], cursor: 0, effects: [], reads: 0, writes: 0,
-    data: Array.from({ length: 30 }, (_, i) => ({ id: `m${i}`, name: `Material ${i}`, price: 10, quantity: 1, count_in_total: true })),
+    data: Array.from({ length: 30 }, (_, i) => ({ id: `m${i}`, name: `Material ${i}`, price: 10, quantity: 1, count_in_total: true, status: 'Mirando' })),
   }
+  h.data[0].status = 'Favorito'
   h.data[0].main_image_url = 'https://shop.example/one.jpg'
   h.data[1].main_image_url = 'https://shop.example/two.jpg'
-  h.sources = []; h.optimized = []
+  h.sources = []; h.optimized = []; h.statusWrites = []
   const hooks = `
     const h = globalThis.__materialsTest;
     export function useState(initial) {
@@ -38,6 +39,12 @@ test('materials page limits rendering, searches all items and updates without a 
     export async function getCategories() { h.reads++; return [] }
     export async function getRooms() { h.reads++; return [] }
     export async function getCurrentProjectId() { return 'project' }
+    export async function updateMaterialStatus(id, status, expected) {
+      h.statusWrites.push({ id, status, expected });
+      if (h.statusFailure) throw new Error('No permission to update');
+      if (h.pendingStatus) await h.pendingStatus;
+      return { id, status };
+    }
     export async function updateMaterial(id, data) { h.writes++; return { ...data, id, rooms: { name: 'Kitchen' }, material_categories: { name: 'Floor' } } }
     export async function createMaterial(data) { h.writes++; return { ...data, id: 'new' } }
     export async function deleteMaterial() { h.writes++ }
@@ -82,6 +89,55 @@ test('materials page limits rendering, searches all items and updates without a 
     assert.equal(h.reads, 3)
     assert.equal(cards(tree).length, 24)
     assert.match(JSON.stringify(tree), /300,00/)
+    // Direct purchase changes only status; undo restores the exact old value.
+    const first = cards(tree)[0].props
+    await first.onPurchase(first.material)
+    tree = render()
+    assert.equal(cards(tree)[0].props.material.status, 'Comprado')
+    assert.deepEqual(h.statusWrites[0], { id: 'm0', status: 'Comprado', expected: 'Favorito' })
+    assert.match(JSON.stringify(tree), /300,00/)
+    assert.equal(cards(tree)[0].props.material.price, 10)
+    await find(tree, n => n.props?.children === 'Deshacer').onClick()
+    tree = render()
+    assert.equal(cards(tree)[0].props.material.status, 'Favorito')
+    // A failed write leaves the product unchanged and reports the failure.
+    h.statusFailure = true
+    await cards(tree)[0].props.onPurchase(cards(tree)[0].props.material)
+    tree = render()
+    assert.equal(cards(tree)[0].props.material.status, 'Favorito')
+    assert.match(JSON.stringify(tree), /No permission to update/)
+    h.statusFailure = false
+    let release
+    h.pendingStatus = new Promise(resolve => { release = resolve })
+    const before = h.statusWrites.length
+    const handler = cards(tree)[0].props.onPurchase
+    const request = handler(cards(tree)[0].props.material)
+    await handler(cards(tree)[0].props.material)
+    tree = render()
+    assert.equal(cards(tree)[0].props.purchasePending, true)
+    assert.equal(h.statusWrites.length, before + 1, 'Double click must make only one request')
+    release(); await request; h.pendingStatus = null
+    tree = render()
+    await find(tree, n => n.props?.children === 'Deshacer').onClick()
+    tree = render()
+    assert.equal(cards(tree)[0].props.material.status, 'Favorito')
+    assert.equal(h.reads, 3, 'Purchase and undo must not reload the catalog')
+    find(tree, n => n.props?.filters && n.props?.onChange).onChange({ category_id: '', room_id: '', priority: '', status: 'Favorito' })
+    tree = render(); await settle(); tree = render()
+    assert.equal(cards(tree).length, 1)
+    await cards(tree)[0].props.onPurchase(cards(tree)[0].props.material)
+    tree = render()
+    assert.equal(cards(tree).length, 0, 'Status filter updates immediately after purchase')
+    await find(tree, n => n.props?.children === 'Deshacer').onClick()
+    tree = render()
+    assert.equal(cards(tree).length, 1, 'Undo is available even after filtering removes the card')
+    find(tree, n => n.props?.filters && n.props?.onChange).onChange({ category_id: '', room_id: '', priority: '', status: '' })
+    tree = render(); await settle(); tree = render()
+    find(tree, n => n.props?.['aria-label'] === 'Vista de tabla').onClick()
+    tree = render()
+    assert.equal(typeof find(tree, n => n.props?.materials).onPurchase, 'function')
+    find(tree, n => n.props?.['aria-label'] === 'Vista de tarjetas').onClick()
+    tree = render()
     await find(tree, n => n.props?.children?.[0]?.startsWith?.('Optimizar')).onClick()
     tree = render()
     assert.deepEqual(h.optimized, ['m0', 'm1'])

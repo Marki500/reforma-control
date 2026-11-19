@@ -1,9 +1,10 @@
+import MaterialPurchaseButton from './MaterialPurchaseButton'
 import { boundedMaterialImageUrl } from '../../utils/materialImages'
 import { Package, ExternalLink, Edit3, Trash2, DollarSign, Copy } from 'lucide-react'
 import { Badge } from '../ui/Badge'
 import { formatCurrency } from '../../utils/formatCurrency'
 
-export default function MaterialsTable({ materials, onEdit, onDelete, onToggleCount, onDuplicate }) {
+export default function MaterialsTable({ materials, onEdit, onDelete, onToggleCount, onDuplicate, onPurchase, purchasingId = null, purchaseDisabled = false }) {
   return (
     <div className="overflow-x-auto rounded-2xl bg-white shadow-sm">
       <table className="w-full text-left text-sm">
@@ -110,36 +111,39 @@ export default function MaterialsTable({ materials, onEdit, onDelete, onToggleCo
                   )}
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-0.5">
-                    {material.product_url && (
-                      <a
-                        href={material.product_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                  <div className="flex flex-col items-start gap-2">
+                    <MaterialPurchaseButton material={material} onPurchase={onPurchase} pending={purchasingId === material.id} disabled={purchaseDisabled} />
+                    <div className="flex items-center gap-0.5">
+                      {material.product_url && (
+                        <a
+                          href={material.product_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+                        >
+                          <ExternalLink size={16} />
+                        </a>
+                      )}
+                      <button
+                        onClick={() => onEdit(material)}
                         className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
                       >
-                        <ExternalLink size={16} />
-                      </a>
-                    )}
-                    <button
-                      onClick={() => onEdit(material)}
-                      className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
-                    >
-                      <Edit3 size={16} />
-                    </button>
-                    <button
-                      onClick={() => onDuplicate(material)}
-                      className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
-                      title="Duplicar"
-                    >
-                      <Copy size={16} />
-                    </button>
-                    <button
-                      onClick={() => onDelete(material)}
-                      className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-red-50 hover:text-red-500"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                        <Edit3 size={16} />
+                      </button>
+                      <button
+                        onClick={() => onDuplicate(material)}
+                        className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+                        title="Duplicar"
+                      >
+                        <Copy size={16} />
+                      </button>
+                      <button
+                        onClick={() => onDelete(material)}
+                        className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                 </td>
               </tr>

@@ -1,10 +1,11 @@
+import MaterialPurchaseButton from './MaterialPurchaseButton'
 import { boundedMaterialImageUrl } from '../../utils/materialImages'
 import { Package, ExternalLink, Edit3, Trash2, Heart, DollarSign, Copy } from 'lucide-react'
 import { Badge } from '../ui/Badge'
 import { formatCurrency } from '../../utils/formatCurrency'
 import { extractDomain } from '../../utils/extractDomain'
 
-export default function MaterialCard({ material, onEdit, onDelete, onToggleCount, onDuplicate }) {
+export default function MaterialCard({ material, onEdit, onDelete, onToggleCount, onDuplicate, onPurchase, purchasePending = false, purchaseDisabled = false }) {
   const domain = material.product_url ? extractDomain(material.product_url) : ''
   const store = material.store_name?.trim() || ''
   const sameStore = store.toLowerCase().replace(/^www\./, '') === domain.toLowerCase().replace(/^www\./, '')
@@ -72,39 +73,6 @@ export default function MaterialCard({ material, onEdit, onDelete, onToggleCount
         <div className="space-y-1">
           <div className="space-y-2">
             <h3 title={material.name} className="break-words text-sm font-semibold leading-relaxed text-stone-800">{material.name}</h3>
-            <div className="flex items-center justify-end gap-2">
-              {/* Count toggle */}
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onToggleCount?.(material) }}
-                className={`rounded-lg p-2 transition-all ${
-                  material.count_in_total === false
-                    ? 'text-stone-500 hover:text-stone-700'
-                    : 'text-olive hover:text-stone-900'
-                }`}
-                title={material.count_in_total === false ? 'No cuenta en totales' : 'Cuenta en totales'}
-              >
-                <DollarSign size={14} />
-              </button>
-              {/* Duplicate */}
-              <button
-                type="button"
-                onClick={() => onDuplicate(material)}
-                className="rounded-lg p-2 text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-800"
-                title="Duplicar"
-              >
-                <Copy size={14} />
-              </button>
-              {/* Delete */}
-              <button
-                type="button"
-                onClick={() => onDelete(material)}
-                className="rounded-lg p-2 text-stone-500 transition-colors hover:bg-red-50 hover:text-red-700"
-                title="Eliminar"
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
           </div>
 
           {(material.brand || material.model) && (
@@ -158,6 +126,42 @@ export default function MaterialCard({ material, onEdit, onDelete, onToggleCount
             <span>Favorito</span>
           </div>
         )}
+        <div className="grid gap-2 border-t border-stone-100 pt-3">
+          <MaterialPurchaseButton material={material} onPurchase={onPurchase} pending={purchasePending} disabled={purchaseDisabled} />
+          <div className="flex items-center justify-end gap-2">
+            {/* Count toggle */}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onToggleCount?.(material) }}
+              className={`rounded-lg p-2 transition-all ${
+                material.count_in_total === false
+                  ? 'text-stone-500 hover:text-stone-700'
+                  : 'text-olive hover:text-stone-900'
+              }`}
+              title={material.count_in_total === false ? 'No cuenta en totales' : 'Cuenta en totales'}
+            >
+              <DollarSign size={14} />
+            </button>
+            {/* Duplicate */}
+            <button
+              type="button"
+              onClick={() => onDuplicate(material)}
+              className="rounded-lg p-2 text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-800"
+              title="Duplicar"
+            >
+              <Copy size={14} />
+            </button>
+            {/* Delete */}
+            <button
+              type="button"
+              onClick={() => onDelete(material)}
+              className="rounded-lg p-2 text-stone-500 transition-colors hover:bg-red-50 hover:text-red-700"
+              title="Eliminar"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )

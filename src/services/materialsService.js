@@ -26,6 +26,15 @@ export async function updateMaterial(id, updates) {
   return data
 }
 
+export async function updateMaterialStatus(id, status, expectedStatus) {
+  let query = supabase.from('materials').update({ status }).eq('id', id)
+  query = expectedStatus == null ? query.is('status', null) : query.eq('status', expectedStatus)
+  const { data, error } = await query.select('id, status').maybeSingle()
+  if (error) throw error
+  if (!data) throw new Error('El estado del material ha cambiado o ya no puedes editarlo. Actualiza la lista antes de reintentarlo.')
+  return data
+}
+
 export async function deleteMaterial(material) {
   await removeStoredFile('material-images', material.main_image_url)
   const { error } = await supabase

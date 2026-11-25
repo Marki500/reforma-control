@@ -12,6 +12,7 @@ import { getSuppliers } from '../services/suppliersService'
 import { expenseAmounts, expenseStatus, expenseTotals, filterExpenses } from '../utils/expenses'
 import { formatCurrency } from '../utils/formatCurrency'
 import { recordedExpensesSummary } from '../utils/dashboardFinance'
+import { expensePayerBreakdown } from '../utils/expensePayers'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 
@@ -23,7 +24,7 @@ const empty = { payer_user_id: '', payment_phases: [], payment_plan_version: 0, 
 const fieldClass = 'mt-1 min-h-[44px] w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm'
 
 export default function Expenses() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [expenses, setExpenses] = useState([])
   const [members, setMembers] = useState([])
   const [rooms, setRooms] = useState([])
@@ -49,10 +50,21 @@ export default function Expenses() {
   useEffect(() => { load() }, [])
 
   const totals = useMemo(() => expenseTotals(expenses), [expenses])
+  const payers = useMemo(() => expensePayerBreakdown(expenses, members), [expenses, members])
+  const selectedPayer = payers.find(person => (person.id || 'unassigned') === filters.payer_user_id)
   const filtered = filterExpenses(expenses, filters).filter(item => !searchParams.get('expense') || item.id === searchParams.get('expense'))
   const editingInvoice = expenseInvoice(expenses.find(item => item.id === editing) || {})
   const pending = recordedExpensesSummary(expenses).pending
   const change = (key, value) => setForm(previous => ({ ...previous, [key]: value, ...(key === 'payment_phases' && value.length ? { paid_amount: String(phasePaid(value)), due_date: phaseDue(value) } : {}) }))
+
+  function selectPayer(payer) {
+    setFilters(previous => ({ ...previous, payer_user_id: payer }))
+    if (searchParams.has('expense')) {
+      const next = new URLSearchParams(searchParams)
+      next.delete('expense')
+      setSearchParams(next, { replace: true })
+    }
+  }
 
   function edit(expense) {
     setEditing(expense?.id || null)
@@ -102,11 +114,13 @@ export default function Expenses() {
         ].map(([label, value]) => <div key={label} className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-xs text-stone-500">{label}</p><p className="mt-1 text-xl font-bold text-stone-800">{formatCurrency(value)}</p></div>)}
       </div>
 
-      {!error && <ExpensesByPerson expenses={expenses} members={members} loading={loading} />}
+      {!error && <ExpensesByPerson expenses={expenses} members={members} loading={loading} selectedPayer={filters.payer_user_id} onSelectPayer={selectPayer} />}
+
+      {filters.payer_user_id && <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-olive-light px-4 py-3 text-sm text-stone-700"><p role="status">Gastos de <strong>{selectedPayer?.label || 'Antiguo miembro'}</strong> · {filtered.length} {filtered.length === 1 ? 'resultado' : 'resultados'}</p><button type="button" onClick={() => selectPayer('')} className="min-h-11 font-medium text-olive underline">Ver todas las personas</button></div>}
 
       {searchParams.get('expense') && <Link to="/gastos" className="inline-block text-sm text-olive underline">Ver todos los gastos</Link>}
       <div className="grid gap-3 rounded-2xl bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
-        <select aria-label="Filtrar por quién paga" className={fieldClass} value={filters.payer_user_id} onChange={event => setFilters(prev => ({ ...prev, payer_user_id: event.target.value }))}><option value="">Todas las personas</option><option value="unassigned">Sin asignar</option>{members.map(member => <option key={member.user_id} value={member.user_id}>{memberName(member)}</option>)}</select>
+        <select aria-label="Filtrar por quién paga" className={fieldClass} value={filters.payer_user_id} onChange={event => selectPayer(event.target.value)}><option value="">Todas las personas</option><option value="unassigned">Sin asignar</option>{payers.filter(person => person.id).map(person => <option key={person.id} value={person.id}>{person.label}</option>)}</select>
         <input aria-label="Buscar gastos" placeholder="Buscar concepto o proveedor…" className={fieldClass} value={filters.search} onChange={event => setFilters(prev => ({ ...prev, search: event.target.value }))} />
         <select aria-label="Filtrar por estado" className={fieldClass} value={filters.status} onChange={event => setFilters(prev => ({ ...prev, status: event.target.value }))}><option value="">Todos los estados</option>{statuses.map(value => <option key={value}>{value}</option>)}</select>
         <select aria-label="Filtrar por categoría" className={fieldClass} value={filters.category} onChange={event => setFilters(prev => ({ ...prev, category: event.target.value }))}><option value="">Todas las categorías</option>{categories.map(value => <option key={value}>{value}</option>)}</select>

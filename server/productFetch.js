@@ -74,8 +74,12 @@ export function createProductFetcher({ apiKey = '', remote = fetchRemote } = {})
       onDiagnostic?.({ transport: 'zenrows', phase: 'fallback', upstreamStatus: failure.diagnostic?.upstreamStatus || null })
       // Fixed HTTPS endpoint, no redirects, no user cookies or application credentials.
       const result = await remote(endpoint.href, {
-        useNativeFetch: true, maxBytes, timeoutMs: 45000, maxRedirects: 0,
+        useNativeFetch: true, maxBytes, timeoutMs: 185000, maxRedirects: 0,
         allowedContentTypes: contentTypes,
+        onDiagnostic: upstream => onDiagnostic?.({
+          transport: 'zenrows', phase: 'response', upstreamStatus: upstream.upstreamStatus,
+          contentType: upstream.contentType, bytes: upstream.bytes, elapsedMs: upstream.elapsedMs,
+        }),
       })
       const page = inspectPage(result, url)
       const diagnostic = { transport: 'zenrows', upstreamStatus: result.status, protection: page.upstream.protection }
@@ -90,13 +94,25 @@ export function createProductFetcher({ apiKey = '', remote = fetchRemote } = {})
     } catch (error) {
       if (error?.code && error instanceof RemoteFetchError) throw error
       const status = error?.diagnostic?.upstreamStatus
-      const code = [401, 403].includes(status) ? 'PRODUCT_SCRAPER_AUTH_FAILED'
+      const networkCode = /^(?:[A-Z][A-Z0-9_]{1,79}|TimeoutError|AbortError|TypeError)$/.test(error?.diagnostic?.networkCode || '') ? error.diagnostic.networkCode : null
+      const timedOut = error?.status === 504
+      const code = timedOut ? 'PRODUCT_SCRAPER_TIMEOUT'
+        : ['dns', 'request'].includes(error?.diagnostic?.phase) ? 'PRODUCT_SCRAPER_NETWORK'
+        : error?.status === 415 ? 'PRODUCT_SCRAPER_INVALID_RESPONSE'
+        : [401, 403].includes(status) ? 'PRODUCT_SCRAPER_AUTH_FAILED'
         : [402, 429].includes(status) ? 'PRODUCT_SCRAPER_LIMIT' : 'PRODUCT_SCRAPER_FAILED'
-      const message = code === 'PRODUCT_SCRAPER_AUTH_FAILED' ? 'El servicio de importación no pudo autenticarse. Contacta con quien administra la aplicación.'
+      const message = timedOut ? 'El servicio de importación ha agotado el tiempo de espera. Inténtalo más tarde.'
+        : code === 'PRODUCT_SCRAPER_NETWORK' ? 'El servidor no pudo conectarse con el servicio de importación. Revisa la conexión del servidor con ZenRows.'
+        : code === 'PRODUCT_SCRAPER_INVALID_RESPONSE' ? 'El servicio de importación devolvió un formato inesperado.'
+        : code === 'PRODUCT_SCRAPER_AUTH_FAILED' ? 'El servicio de importación no pudo autenticarse. Contacta con quien administra la aplicación.'
         : code === 'PRODUCT_SCRAPER_LIMIT' ? 'El servicio de importación ha alcanzado su límite. Inténtalo más tarde.'
           : 'El segundo intento automático no ha podido recuperar la ficha. Inténtalo más tarde.'
       // Never propagate provider URLs, error bodies or credentials to logs or the client.
-      throw importError(message, code, 502, { transport: 'zenrows', upstreamStatus: status || null })
+      throw importError(message, code, timedOut ? 504 : 502, {
+        transport: 'zenrows', upstreamStatus: status || null,
+        phase: ['dns', 'request', 'content-type'].includes(error?.diagnostic?.phase) ? error.diagnostic.phase : 'response',
+        networkCode, failureStatus: error instanceof RemoteFetchError ? error.status : null,
+      })
     } finally {
       active--
     }

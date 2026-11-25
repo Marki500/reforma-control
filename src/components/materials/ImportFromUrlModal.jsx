@@ -3,7 +3,7 @@ import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Link, Loader2, AlertCircle, CheckCircle } from 'lucide-react'
-import { authenticatedRequest } from '../../services/uploadService'
+import { importProduct } from '../../services/productImportService'
 import { normalizeProductUrl } from '../../utils/productUrl'
 import { clipboardHtmlDetails, productFromClipboard } from '../../utils/productClipboard'
 
@@ -37,7 +37,7 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
     setResult(null)
 
     try {
-      const data = await authenticatedRequest('/api/import-product', JSON.stringify({ url: normalizedUrl }), { 'Content-Type': 'application/json' })
+      const data = await importProduct(normalizedUrl)
       setResult(data)
     } catch (err) {
       setError(err.message || 'No se pudo extraer información de la URL')
@@ -103,7 +103,7 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
           </Button>
         </div>
 
-        {loading && <p role="status" className="text-sm text-stone-500">Consultando la tienda. La importación puede tardar hasta un minuto.</p>}
+        {loading && <p role="status" className="text-sm text-stone-500">Consultando la tienda. Las fichas protegidas pueden tardar varios minutos.</p>}
 
         {error && (
           <div className="flex items-start gap-3 rounded-xl bg-red-50 p-4">

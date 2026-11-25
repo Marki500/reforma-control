@@ -116,8 +116,8 @@ app.get('/api/health', (_req, res) => {
   res.status(200).json({
     status: 'ok',
     release: 'pdf-vision-v1',
-    features: { ai_pdf_vision: 1, ai_extraction_validation: 1, ai_invoice_async: 1, ai_budget_async: 6, ai_usage_limits: 1, project_invitation_email: 1, project_comments: 1, product_import: 3, material_images: 2 },
-    product_import: { transport: 'native-fetch-pinned', diagnostics: 1, fallback: 'zenrows', fallback_configured: productScraperConfigured },
+    features: { ai_pdf_vision: 1, ai_extraction_validation: 1, ai_invoice_async: 1, ai_budget_async: 6, ai_usage_limits: 1, project_invitation_email: 1, project_comments: 1, product_import: 4, material_images: 2 },
+    product_import: { transport: 'native-fetch-pinned', diagnostics: 1, fallback: 'zenrows', fallback_configured: productScraperConfigured, async: 1 },
     ai: { provider: aiProvider, model: selectedModel, configured, free_only: aiFreeOnly, ...(aiProvider === 'groq' ? { fallback: openRouterApiKey ? 'openrouter/free' : null } : {}) },
     mail: { provider: 'mailjet', configured: Boolean(mailjetApiKey && mailjetSecretKey && appPublicUrl) },
   })
@@ -230,22 +230,9 @@ app.post('/api/send-comment-notifications', requireSession, async (req, res) => 
   }
 })
 
-app.post('/api/import-product', requireSession, async (req, res) => {
-  const startedAt = Date.now()
-  const diagnostic = { requestId: req.requestId, importerVersion: 3, node: process.version, platform: process.platform }
-  let url = normalizeRemoteUrl(req.body?.url)
+const productImportJobs = new Map()
 
-  if (!url) {
-    return res.status(400).json({ error: 'URL requerida' })
-  }
-
-  try {
-    url = canonicalizeRemoteUrl(url)
-  } catch {
-    return res.status(400).json({ error: 'URL inválida' })
-  }
-
-  try {
+async function readImportedProduct(url, diagnostic) {
     const response = await fetchProduct(url, {
       onDiagnostic: upstream => console.info('[product import:upstream]', { ...diagnostic, ...upstream }),
     })
@@ -339,21 +326,69 @@ app.post('/api/import-product', requireSession, async (req, res) => {
 
     // Ensure price is a number or null
     product.price = product.price !== null ? Number(product.price) : null
+    return product
+}
 
-    res.json(product)
-  } catch (error) {
+function productImportFailure(error, diagnostic, startedAt) {
     console.error('[product import:error]', { ...diagnostic, ...error?.diagnostic, durationMs: Date.now() - startedAt, message: error?.message || 'Unknown error' })
     const blocked = error?.code === 'STORE_ACCESS_DENIED' || (!error?.code && error?.diagnostic?.upstreamStatus === 403)
     const protection = error?.diagnostic?.protection
-    res.status(error instanceof RemoteFetchError ? error.status : 500).json({
+    return { status: error instanceof RemoteFetchError ? error.status : 500, payload: {
       error: blocked && protection && error?.diagnostic?.transport !== 'zenrows'
         ? `La tienda ha rechazado la petición automática mediante ${protection}. Abre la ficha en tu navegador y pega su texto o HTML para importar los datos.`
         : error instanceof Error ? error.message : 'Error al extraer datos',
       code: error?.code || (blocked ? 'STORE_ACCESS_DENIED' : 'PRODUCT_IMPORT_FAILED'),
-      request_id: req.requestId,
-      diagnostic: { importer_version: 3, transport: error?.diagnostic?.transport || 'native-fetch-pinned', upstream_status: error?.diagnostic?.upstreamStatus || null, protection: protection || null, fallback_configured: productScraperConfigured },
-    })
+      request_id: diagnostic.requestId,
+      diagnostic: { importer_version: 4, transport: error?.diagnostic?.transport || 'native-fetch-pinned', upstream_status: error?.diagnostic?.upstreamStatus || null, protection: protection || null, fallback_configured: productScraperConfigured, phase: error?.diagnostic?.phase || null, network_code: error?.diagnostic?.networkCode || null },
+    } }
+}
+
+app.post('/api/import-product', requireSession, async (req, res) => {
+  const startedAt = Date.now()
+  const diagnostic = { requestId: req.requestId, importerVersion: 4, node: process.version, platform: process.platform }
+  const value = normalizeRemoteUrl(req.body?.url)
+  if (!value) return res.status(400).json({ error: 'URL requerida' })
+  let url
+  try { url = canonicalizeRemoteUrl(value) } catch {
+    return res.status(400).json({ error: 'URL inválida' })
   }
+  if (req.body?.async === true) {
+    if ([...productImportJobs.values()].some(job => job.userId === req.authUser.id && job.status === 'processing')) {
+      return res.status(429).json({ error: 'Ya hay una importación en curso. Espera a que termine.', code: 'PRODUCT_IMPORT_BUSY', request_id: req.requestId })
+    }
+    const jobId = randomUUID(), pollToken = randomUUID()
+    const job = { userId: req.authUser.id, pollToken, requestId: req.requestId, status: 'processing', createdAt: startedAt }
+    productImportJobs.set(jobId, job)
+    res.status(202).json({ status: 'processing', job_id: jobId, poll_token: pollToken, request_id: req.requestId })
+    const cleanup = setTimeout(() => productImportJobs.delete(jobId), 10 * 60 * 1000)
+    cleanup.unref?.()
+    setImmediate(async () => {
+      try {
+        job.product = await readImportedProduct(url, diagnostic)
+        job.status = 'complete'
+      } catch (error) {
+        job.failure = productImportFailure(error, diagnostic, startedAt)
+        job.status = 'error'
+      }
+    })
+    return
+  }
+  // Preserve compatibility with clients deployed before asynchronous imports.
+  try { res.json(await readImportedProduct(url, diagnostic)) } catch (error) {
+    const failure = productImportFailure(error, diagnostic, startedAt)
+    res.status(failure.status).json(failure.payload)
+  }
+})
+
+app.get('/api/import-product/:jobId', (req, res) => {
+  res.set('Cache-Control', 'no-store')
+  const job = productImportJobs.get(req.params.jobId)
+  if (!job || job.pollToken !== req.get('x-product-import-token')) {
+    return res.status(404).json({ error: 'La importación ya no está disponible. Vuelve a intentarlo.', code: 'PRODUCT_IMPORT_NOT_FOUND', request_id: req.requestId })
+  }
+  if (job.status === 'processing') return res.status(202).json({ status: 'processing', elapsed_ms: Date.now() - job.createdAt, request_id: job.requestId })
+  if (job.status === 'error') return res.status(job.failure.status).json(job.failure.payload)
+  return res.json({ status: 'complete', product: job.product, request_id: job.requestId })
 })
 
 app.post('/api/extract-inspiration', requireSession, async (req, res) => {

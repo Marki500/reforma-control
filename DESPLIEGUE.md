@@ -2,7 +2,7 @@
 
 ## Importación de tiendas protegidas — 25 de noviembre de 2026
 
-El importador v3 prueba primero la descarga directa. Si recibe un bloqueo, un
+El importador v4 prueba primero la descarga directa. Si recibe un bloqueo, un
 error remoto recuperable, una página que requiere JavaScript o una ficha sin
 precio, hace como máximo un segundo intento mediante ZenRows, cuando está
 configurado. No se limita a Leroy Merlin: utiliza el mismo mecanismo para
@@ -16,8 +16,8 @@ Para activarlo en Coolify:
 2. Añadir `ZENROWS_API_KEY` como variable **del servidor**, sin prefijo `VITE_`.
    No pegar la clave en el chat ni incluirla en el repositorio.
 3. Reconstruir y desplegar backend y frontend. No requiere migraciones ni SDK.
-4. Comprobar `/api/health`: `features.product_import: 3` y
-   `product_import.fallback_configured: true`.
+4. Comprobar `/api/health`: `features.product_import: 4`,
+   `product_import.async: 1` y `product_import.fallback_configured: true`.
 5. Importar la ficha real de Leroy y comprobar nombre, foto y precio antes de guardar.
 
 La integración usa el [modo automático de ZenRows](https://docs.zenrows.com/fetch/api-reference)
@@ -32,12 +32,31 @@ Desde la terminal del contenedor se puede probar el flujo real con:
 node scripts/diagnose-product-import.mjs --fallback 'https://www.leroymerlin.es/productos/pack-wc-oxy-con-tapa-amortiguada-3-6-l-92452542.html'
 ```
 
-El segundo intento tiene un límite de 45 segundos y 5 MB, no sigue redirecciones
+El segundo intento tiene un límite de 185 segundos y 5 MB, no sigue redirecciones
 del proveedor ni envía la sesión del usuario. Hay un máximo de dos solicitudes
-simultáneas al proveedor por proceso. Ajustar el timeout del proxy de la aplicación
-a al menos 75 segundos para permitir ambos intentos. Los errores distinguen
-bloqueo persistente, clave incorrecta, cuota agotada y ficha no legible. Los logs no
+simultáneas al proveedor por proceso. El frontend inicia un trabajo con HTTP 202
+y consulta su estado mediante peticiones cortas con un token privado en cabecera;
+la conexión al proxy no queda esperando los 185 segundos. Una segunda importación
+del mismo usuario se rechaza mientras la primera siga en curso. Los trabajos se
+conservan diez minutos en memoria: reiniciar el proceso los invalida; si hay varias
+réplicas, las consultas deben dirigirse a la misma instancia.
+
+Los clientes anteriores que no envían `async: true` conservan la respuesta
+síncrona y necesitan un timeout de proxy de al menos 210 segundos. Actualizar y
+recargar el frontend junto al backend para usar el flujo asíncrono.
+
+Los errores distinguen bloqueo persistente, clave incorrecta, cuota agotada,
+timeout, fallo de conexión/DNS, formato inesperado y ficha no legible. Los logs no
 incluyen la clave, cookies ni HTML del desafío.
+
+Los logs v3 de producción mostraban fallos a los 45 segundos y también a los
+8–10 segundos con `upstreamStatus: null`. El límite de 45 segundos podía cancelar
+el trabajo antes de que ZenRows terminara; su documentación recomienda al menos
+180 segundos. Los fallos más cortos no quedan explicados solo por ese límite.
+En v4 se conservan `phase` (`dns`, `request` o `content-type`), `networkCode`
+(por ejemplo `ECONNRESET`, `EAI_AGAIN`, `UND_ERR_CONNECT_TIMEOUT`), estado HTTP y
+estado interno del fallo. El cliente recibe `PRODUCT_SCRAPER_TIMEOUT` o
+`PRODUCT_SCRAPER_NETWORK` con el identificador de la importación original.
 
 Comprobado: Leroy rechaza la descarga directa con HTTP 403/DataDome. Las pruebas
 automatizadas usan un proveedor simulado y verifican el recorrido HTTP completo.

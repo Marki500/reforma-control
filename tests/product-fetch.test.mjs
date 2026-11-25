@@ -130,6 +130,59 @@ test('provider redirects cannot forward the API key to another host', async t =>
   assert.equal(fetch.mock.callCount(), 2)
 })
 
+test('provider timeouts use the supported duration and retain a distinct timeout error', async t => {
+  const originalTimeout = AbortSignal.timeout.bind(AbortSignal)
+  const durations = []
+  t.mock.method(AbortSignal, 'timeout', milliseconds => { durations.push(milliseconds); return originalTimeout(milliseconds) })
+  network(t, async target => {
+    if (target.hostname !== 'api.zenrows.com') return html(challenge, 403)
+    throw new DOMException('synthetic-key', 'TimeoutError')
+  })
+  await assert.rejects(createProductFetcher({ apiKey: 'synthetic-key' })(url), error => {
+    assert.equal(error.code, 'PRODUCT_SCRAPER_TIMEOUT')
+    assert.equal(error.status, 504)
+    assert.equal(error.diagnostic.networkCode, 'TimeoutError')
+    assert.doesNotMatch(error.message + JSON.stringify(error.diagnostic), /synthetic-key/)
+    return true
+  })
+  assert.deepEqual(durations, [15000, 185000])
+})
+
+test('early provider connection failures preserve the bounded network cause', async t => {
+  network(t, async target => {
+    if (target.hostname !== 'api.zenrows.com') return html(challenge, 403)
+    throw Object.assign(new Error('private detail synthetic-key'), { cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } })
+  })
+  await assert.rejects(createProductFetcher({ apiKey: 'synthetic-key' })(url), error => {
+    assert.equal(error.code, 'PRODUCT_SCRAPER_NETWORK')
+    assert.equal(error.diagnostic.phase, 'request')
+    assert.equal(error.diagnostic.networkCode, 'UND_ERR_CONNECT_TIMEOUT')
+    assert.doesNotMatch(error.message + JSON.stringify(error.diagnostic), /synthetic-key|private detail/)
+    return true
+  })
+})
+
+test('unexpected provider content retains its HTTP status and response phase', async t => {
+  network(t, async target => target.hostname === 'api.zenrows.com'
+    ? new Response('{}', { headers: { 'content-type': 'application/json' } }) : html(challenge, 403))
+  await assert.rejects(createProductFetcher({ apiKey: 'synthetic-key' })(url), error => error.code === 'PRODUCT_SCRAPER_INVALID_RESPONSE' && error.diagnostic.upstreamStatus === 200 && error.diagnostic.phase === 'content-type')
+})
+
+test('provider DNS failures report a safe code rather than an unspecified 502', async t => {
+  network(t, async () => html(challenge, 403))
+  t.mock.method(dns, 'lookup', async hostname => {
+    if (hostname === 'api.zenrows.com') throw Object.assign(new Error('synthetic-key private DNS detail'), { code: 'EAI_AGAIN' })
+    return [{ address: '1.1.1.1', family: 4 }]
+  })
+  await assert.rejects(createProductFetcher({ apiKey: 'synthetic-key' })(url), error => {
+    assert.equal(error.code, 'PRODUCT_SCRAPER_NETWORK')
+    assert.equal(error.diagnostic.phase, 'dns')
+    assert.equal(error.diagnostic.networkCode, 'EAI_AGAIN')
+    assert.doesNotMatch(error.message + JSON.stringify(error.diagnostic), /synthetic-key|private DNS detail/)
+    return true
+  })
+})
+
 test('only two provider requests may run simultaneously and the slots are released', async t => {
   const pending = []
   network(t, async target => {

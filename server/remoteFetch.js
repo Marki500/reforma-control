@@ -99,8 +99,10 @@ async function resolvePublicAddresses(hostname) {
     return [{ address: hostname, family: net.isIP(hostname) }]
   }
   let addresses
-  try { addresses = await dns.lookup(hostname, { all: true, verbatim: true }) } catch {
-    throw new RemoteFetchError('No se pudo resolver el dominio.', 502)
+  try { addresses = await dns.lookup(hostname, { all: true, verbatim: true }) } catch (error) {
+    const failure = new RemoteFetchError('No se pudo resolver el dominio.', 502)
+    failure.diagnostic = { hostname, phase: 'dns', networkCode: String(error?.code || error?.name || '').slice(0, 80) }
+    throw failure
   }
   if (!addresses.length) throw new RemoteFetchError('El dominio no tiene una dirección válida.', 502)
   if (addresses.some(({ address }) => !isPublicIp(address))) {
@@ -217,7 +219,9 @@ export async function fetchRemote(value, options = {}) {
     }
     const contentType = String(result.headers['content-type'] || '').split(';')[0].trim().toLowerCase()
     if (allowedContentTypes.length && !allowedContentTypes.some(type => contentType === type || contentType.startsWith(`${type}/`))) {
-      throw new RemoteFetchError('El contenido remoto no tiene un formato permitido.', 415)
+      const error = new RemoteFetchError('El contenido remoto no tiene un formato permitido.', 415)
+      error.diagnostic = { ...diagnostic, phase: 'content-type' }
+      throw error
     }
     return { ...result, contentType, finalUrl: url.href }
   }

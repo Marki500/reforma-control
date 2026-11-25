@@ -1,6 +1,11 @@
 import { fetchRemote } from '../server/remoteFetch.js'
+import 'dotenv/config'
+import { createProductFetcher } from '../server/productFetch.js'
+import { extractProductPrice } from '../server/productPrice.js'
+import { load } from 'cheerio'
 
-const urls = process.argv.slice(2)
+const fallbackMode = process.argv.includes('--fallback')
+const urls = process.argv.slice(2).filter(value => value !== '--fallback')
 if (!urls.length) urls.push('https://www.obramat.es/productos/aerotermo-acs-250l-nuos-fit-s2-ariston-25112023.html')
 const oldHeaders = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
@@ -23,6 +28,20 @@ const currentHeaders = {
 // it does not have the application's DNS pinning or redirect protections.
 for (const url of urls) {
   if (new URL(url).protocol !== 'https:') throw new Error('Use a public HTTPS product URL.')
+  if (fallbackMode) {
+    if (!process.env.ZENROWS_API_KEY?.trim()) throw new Error('Configura ZENROWS_API_KEY en el servidor para probar --fallback.')
+    try {
+      const response = await createProductFetcher({ apiKey: process.env.ZENROWS_API_KEY })(url, {
+        onDiagnostic: diagnostic => console.log(JSON.stringify({ diagnostic })),
+      })
+      const $ = load(response.body.toString('utf8'))
+      console.log(JSON.stringify({ hostname: new URL(url).hostname, status: response.status, transport: response.transport || 'native-fetch-pinned', price: extractProductPrice($, new URL(url).hostname.replace(/^www\./, '')), title: $('h1').first().text().trim().slice(0, 160) }))
+    } catch (error) {
+      console.log(JSON.stringify({ error: error.message, code: error.code, diagnostic: error.diagnostic }))
+      process.exitCode = 1
+    }
+    continue
+  }
   console.log(JSON.stringify({ url, node: process.version }))
   for (const [label, legacy, headers] of [
     ['fixed-pinned-fetch', false, currentHeaders],

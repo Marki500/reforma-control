@@ -12,6 +12,7 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
+  const [storeBlocked, setStoreBlocked] = useState(false)
   const [pastedText, setPastedText] = useState('')
   const [pastedDetails, setPastedDetails] = useState({})
 
@@ -20,6 +21,7 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
       const data = productFromClipboard(pastedText, url, pastedDetails)
       setResult(data)
       setError(null)
+      setStoreBlocked(false)
     } catch (err) {
       setError(err.message || 'Revisa la URL y el contenido pegado.')
     }
@@ -31,6 +33,7 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
     setUrl(normalizedUrl)
     setLoading(true)
     setError(null)
+    setStoreBlocked(false)
     setResult(null)
 
     try {
@@ -38,6 +41,7 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
       setResult(data)
     } catch (err) {
       setError(err.message || 'No se pudo extraer información de la URL')
+      setStoreBlocked(err.code === 'STORE_ACCESS_DENIED')
     } finally {
       setLoading(false)
     }
@@ -64,6 +68,7 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
     setUrl('')
     setResult(null)
     setError(null)
+    setStoreBlocked(false)
     setLoading(false)
     setPastedText('')
     setPastedDetails({})
@@ -98,6 +103,8 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
           </Button>
         </div>
 
+        {loading && <p role="status" className="text-sm text-stone-500">Consultando la tienda. La importación puede tardar hasta un minuto.</p>}
+
         {error && (
           <div className="flex items-start gap-3 rounded-xl bg-red-50 p-4">
             <AlertCircle size={18} className="mt-0.5 flex-shrink-0 text-red-500" />
@@ -105,12 +112,24 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
               <p className="text-sm font-medium text-red-700">Error</p>
               <p className="text-sm text-red-600">{error}</p>
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                <button
-                  onClick={handleExtract}
-                  className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100"
-                >
-                  Reintentar
-                </button>
+                {storeBlocked ? (
+                  <a
+                    href={/^https?:\/\//i.test(normalizeProductUrl(url)) ? normalizeProductUrl(url) : undefined}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100"
+                  >
+                    Abrir ficha de la tienda
+                  </a>
+                ) : (
+                  <button
+                    onClick={handleExtract}
+                    disabled={loading}
+                    className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100"
+                  >
+                    Reintentar
+                  </button>
+                )}
                 <button
                   onClick={handleManual}
                   className="rounded-lg bg-stone-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-800"
@@ -125,7 +144,7 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
         <details className="rounded-xl border border-stone-200 p-3" open={error ? true : undefined}>
           <summary className="cursor-pointer text-sm font-medium text-stone-700">Importar pegando texto o HTML</summary>
           <p className="mt-3 text-sm text-stone-500">
-            Pega el texto de la ficha o su código HTML. Para incluir la foto, en la tienda haz clic derecho sobre la ficha,
+            Abre la ficha en la tienda, selecciona el nombre y el precio con IVA, cópialos y pégalos aquí. También puedes pegar su código HTML. Para incluir la foto, en la tienda haz clic derecho sobre la ficha,
             elige «Inspeccionar» y copia el contenedor que incluya la foto, el nombre y el precio con «Copiar → Copiar outerHTML».
             Mantén la URL del producto en el campo superior.
           </p>
@@ -141,7 +160,7 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
               if (!text) return
               e.preventDefault()
               setPastedText(text)
-              setPastedDetails(/<(?:div|html|body|h1|img|picture|section|meta)\b/i.test(text) ? {} : clipboardHtmlDetails(e.clipboardData.getData('text/html'), normalizeProductUrl(url)))
+              setPastedDetails(/<(?:div|html|body|h1|img|picture|section|meta|script)\b/i.test(text) ? {} : clipboardHtmlDetails(e.clipboardData.getData('text/html'), normalizeProductUrl(url)))
               setResult(null)
             }}
           />
@@ -166,11 +185,11 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
                 <span className="font-medium">Marca:</span> {result.brand}
               </p>
             )}
-            {result.price && (
+            {result.price != null ? (
               <p className="text-sm text-stone-700">
-                <span className="font-medium">Precio:</span> {result.price} {result.currency}
+                <span className="font-medium">Precio:</span> {new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(result.price)} {result.currency}
               </p>
-            )}
+            ) : <p className="text-sm text-amber-800">No se ha podido identificar el precio. Complétalo antes de guardar el material.</p>}
             {result.storeName && (
               <p className="text-sm text-stone-700">
                 <span className="font-medium">Tienda:</span> {result.storeName}

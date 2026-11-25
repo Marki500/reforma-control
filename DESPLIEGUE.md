@@ -1,5 +1,50 @@
 # Corrección de almacenamiento
 
+## Importación de tiendas protegidas — 25 de noviembre de 2026
+
+El importador v3 prueba primero la descarga directa. Si recibe un bloqueo, un
+error remoto recuperable, una página que requiere JavaScript o una ficha sin
+precio, hace como máximo un segundo intento mediante ZenRows, cuando está
+configurado. No se limita a Leroy Merlin: utiliza el mismo mecanismo para
+cualquier URL pública de producto. Conserva el extractor de precios y los datos
+del producto original. Un CAPTCHA o una pantalla de acceso con HTTP 200 no se
+aceptan como una ficha importada.
+
+Para activarlo en Coolify:
+
+1. Crear una cuenta y obtener una clave de [ZenRows](https://www.zenrows.com/).
+2. Añadir `ZENROWS_API_KEY` como variable **del servidor**, sin prefijo `VITE_`.
+   No pegar la clave en el chat ni incluirla en el repositorio.
+3. Reconstruir y desplegar backend y frontend. No requiere migraciones ni SDK.
+4. Comprobar `/api/health`: `features.product_import: 3` y
+   `product_import.fallback_configured: true`.
+5. Importar la ficha real de Leroy y comprobar nombre, foto y precio antes de guardar.
+
+La integración usa el [modo automático de ZenRows](https://docs.zenrows.com/fetch/api-reference)
+y `proxy_country=es` para obtener contenido/precios de España. El servicio puede
+consumir créditos del plan contratado, especialmente al usar proxies y navegador.
+Una clave vacía mantiene exclusivamente la descarga directa. No se ha contratado
+ni activado ningún plan desde esta sesión.
+
+Desde la terminal del contenedor se puede probar el flujo real con:
+
+```sh
+node scripts/diagnose-product-import.mjs --fallback 'https://www.leroymerlin.es/productos/pack-wc-oxy-con-tapa-amortiguada-3-6-l-92452542.html'
+```
+
+El segundo intento tiene un límite de 45 segundos y 5 MB, no sigue redirecciones
+del proveedor ni envía la sesión del usuario. Hay un máximo de dos solicitudes
+simultáneas al proveedor por proceso. Ajustar el timeout del proxy de la aplicación
+a al menos 75 segundos para permitir ambos intentos. Los errores distinguen
+bloqueo persistente, clave incorrecta, cuota agotada y ficha no legible. Los logs no
+incluyen la clave, cookies ni HTML del desafío.
+
+Comprobado: Leroy rechaza la descarga directa con HTTP 403/DataDome. Las pruebas
+automatizadas usan un proveedor simulado y verifican el recorrido HTTP completo.
+**La recuperación real mediante ZenRows está pendiente de configurar una clave
+válida y probarla desde producción.** No existe una garantía de acceso a todas
+las tiendas, productos con login o CAPTCHA persistentes.
+
 ## Diagnóstico de importación de productos — 25 de octubre de 2026
 
 Reconstruir y desplegar servidor y frontend. En `/api/health` debe aparecer

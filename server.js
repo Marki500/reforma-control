@@ -7,6 +7,8 @@ import { fileURLToPath } from 'url'
 import { randomUUID } from 'node:crypto'
 import * as cheerio from 'cheerio'
 import multer from 'multer'
+import { extractProductPrice, structuredProducts } from './server/productPrice.js'
+import { createProductFetcher } from './server/productFetch.js'
 import { registerMaterialImageRoutes } from './server/materialImageRoutes.js'
 import { inspectPdf, prepareDocumentContent, PdfDocumentError } from './server/pdfDocument.js'
 import { analysisProblem, assertReadableAnalysis } from './src/utils/documentAnalysis.js'
@@ -22,6 +24,8 @@ const uploadsDir = path.join(__dirname, 'uploads')
 fs.mkdir(uploadsDir, { recursive: true }).catch(() => {})
 
 const app = express()
+const productScraperConfigured = Boolean(process.env.ZENROWS_API_KEY?.trim())
+const fetchProduct = createProductFetcher({ apiKey: process.env.ZENROWS_API_KEY || '' })
 app.use(cors())
 app.use(express.json())
 app.use((req, res, next) => {
@@ -112,8 +116,8 @@ app.get('/api/health', (_req, res) => {
   res.status(200).json({
     status: 'ok',
     release: 'pdf-vision-v1',
-    features: { ai_pdf_vision: 1, ai_extraction_validation: 1, ai_invoice_async: 1, ai_budget_async: 6, ai_usage_limits: 1, project_invitation_email: 1, project_comments: 1, product_import: 2, material_images: 2 },
-    product_import: { transport: 'native-fetch-pinned', diagnostics: 1 },
+    features: { ai_pdf_vision: 1, ai_extraction_validation: 1, ai_invoice_async: 1, ai_budget_async: 6, ai_usage_limits: 1, project_invitation_email: 1, project_comments: 1, product_import: 3, material_images: 2 },
+    product_import: { transport: 'native-fetch-pinned', diagnostics: 1, fallback: 'zenrows', fallback_configured: productScraperConfigured },
     ai: { provider: aiProvider, model: selectedModel, configured, free_only: aiFreeOnly, ...(aiProvider === 'groq' ? { fallback: openRouterApiKey ? 'openrouter/free' : null } : {}) },
     mail: { provider: 'mailjet', configured: Boolean(mailjetApiKey && mailjetSecretKey && appPublicUrl) },
   })
@@ -228,7 +232,7 @@ app.post('/api/send-comment-notifications', requireSession, async (req, res) => 
 
 app.post('/api/import-product', requireSession, async (req, res) => {
   const startedAt = Date.now()
-  const diagnostic = { requestId: req.requestId, importerVersion: 2, node: process.version, platform: process.platform }
+  const diagnostic = { requestId: req.requestId, importerVersion: 3, node: process.version, platform: process.platform }
   let url = normalizeRemoteUrl(req.body?.url)
 
   if (!url) {
@@ -242,19 +246,8 @@ app.post('/api/import-product', requireSession, async (req, res) => {
   }
 
   try {
-    const response = await fetchRemote(url, {
-      useNativeFetch: true,
+    const response = await fetchProduct(url, {
       onDiagnostic: upstream => console.info('[product import:upstream]', { ...diagnostic, ...upstream }),
-      maxBytes: 5 * 1024 * 1024,
-      timeoutMs: 15000,
-      allowedContentTypes: ['text/html', 'application/xhtml+xml'],
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-        'Cache-Control': 'no-cache',
-        'Upgrade-Insecure-Requests': '1',
-      },
     })
 
     const html = response.body.toString('utf8')
@@ -274,42 +267,18 @@ app.post('/api/import-product', requireSession, async (req, res) => {
       availability: '',
     }
 
-    // --- Helper: parse a price string to number (handles ES and EN formats) ---
-    function parsePrice(val) {
-      if (val === null || val === undefined || val === '') return null
-      let s = String(val).replace(/[^0-9.,\-]/g, '')
-      if (s === '') return null
-      // Spanish format: 1.965,04 → remove dots, swap comma for dot
-      if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
-        s = s.replace(/\./g, '').replace(',', '.')
-      } else {
-        s = s.replace(/,/g, '')
-      }
-      const n = Number(s)
-      return isNaN(n) ? null : n
-    }
-
-    // --- Store-specific rules (easy to extend) ---
-    const storeRules = {
-      'climamarket.es': { price: '.climamarket-price' },
-      'leroymerlin.es': { price: '.big-price' },
-      'amazon.es': { price: '.a-price-whole', name: '#productTitle' },
-      'amazon.com': { price: '.a-price-whole', name: '#productTitle' },
-    }
-
-    const rules = storeRules[hostname] || {}
+    const rules = /(^|\.)amazon\.(es|com)$/.test(hostname) ? { name: '#productTitle' } : {}
 
     // 1. JSON-LD (structured data, most reliable)
     $('script[type="application/ld+json"]').each((_, el) => {
       try {
         const data = JSON.parse($(el).text())
-        const items = data['@graph'] || [data]
+        const items = structuredProducts(data)
         for (const item of items) {
           if (item['@type'] === 'Product' || item['@type']?.includes('Product')) {
             product.name ||= item.name || ''
             product.brand ||= item.brand?.name || item.brand || ''
             product.model ||= item.model || ''
-            product.price ??= parsePrice(item.offers?.price ?? item.offers?.[0]?.price)
             product.currency ||= item.offers?.priceCurrency || item.offers?.[0]?.priceCurrency || 'EUR'
             product.image ||= item.image?.url || (Array.isArray(item.image) ? item.image[0] : item.image) || ''
             product.description ||= item.description || ''
@@ -334,7 +303,6 @@ app.post('/api/import-product', requireSession, async (req, res) => {
       const content = $(el).attr('content')
       if (name === 'description') product.description ||= content || ''
       if (name === 'product:brand' || name === 'brand') product.brand ||= content || ''
-      if (name === 'product:price:amount') product.price ??= parsePrice(content)
       if (name === 'product:price:currency') product.currency ||= content || 'EUR'
       if (name === 'twitter:image') product.image ||= content || ''
     })
@@ -343,54 +311,7 @@ app.post('/api/import-product', requireSession, async (req, res) => {
     if (!product.name && rules.name) {
       product.name = $(rules.name).first().text().trim() || ''
     }
-    if (product.price === null && rules.price) {
-      const el = $(rules.price).first()
-      const val = parsePrice(el.attr('content') || el.text())
-      if (val !== null && val > 1) product.price = val
-    }
-
-    // 5. Microdata itemprop
-    if (product.price === null) {
-      product.price = parsePrice($('meta[itemprop="price"]').attr('content'))
-    }
-    if (product.price === null) {
-      product.price = parsePrice($('[itemprop="price"]').first().attr('content'))
-    }
-
-    // 6. Common CSS price selectors (iterate until one works)
-    if (product.price === null) {
-      const selectors = [
-        '.current-price .price',
-        '.product-price',
-        '[data-price]',
-        '.price .amount',
-        '.precio',
-        '#our_price_display',
-        '.price_sale',
-        '.price-percent-reduction',
-      ]
-      for (const sel of selectors) {
-        const text = $(sel).first().text().trim()
-        const val = parsePrice(text)
-        if (val !== null && val > 1) { product.price = val; break }
-      }
-    }
-
-    // 7. Regex fallback on raw HTML (last resort)
-    if (product.price === null) {
-      const patterns = [
-        /(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)\s*[€$€]/,
-        /[€$€]\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)/,
-        /precio[^0-9]*?(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)/i,
-      ]
-      for (const pat of patterns) {
-        const m = html.match(pat)
-        if (m) {
-          const val = parsePrice(m[1])
-          if (val !== null && val > 1) { product.price = val; break }
-        }
-      }
-    }
+    product.price = extractProductPrice($, hostname)
 
     // 8. Brand from meta or URL
     if (!product.brand) {
@@ -422,15 +343,15 @@ app.post('/api/import-product', requireSession, async (req, res) => {
     res.json(product)
   } catch (error) {
     console.error('[product import:error]', { ...diagnostic, ...error?.diagnostic, durationMs: Date.now() - startedAt, message: error?.message || 'Unknown error' })
-    const blocked = error?.diagnostic?.upstreamStatus === 403
+    const blocked = error?.code === 'STORE_ACCESS_DENIED' || (!error?.code && error?.diagnostic?.upstreamStatus === 403)
     const protection = error?.diagnostic?.protection
     res.status(error instanceof RemoteFetchError ? error.status : 500).json({
-      error: blocked && protection
-        ? `La tienda ha rechazado la petición automática mediante ${protection}. Puedes importar pegando el HTML de la ficha.`
+      error: blocked && protection && error?.diagnostic?.transport !== 'zenrows'
+        ? `La tienda ha rechazado la petición automática mediante ${protection}. Abre la ficha en tu navegador y pega su texto o HTML para importar los datos.`
         : error instanceof Error ? error.message : 'Error al extraer datos',
-      code: blocked ? 'STORE_ACCESS_DENIED' : 'PRODUCT_IMPORT_FAILED',
+      code: error?.code || (blocked ? 'STORE_ACCESS_DENIED' : 'PRODUCT_IMPORT_FAILED'),
       request_id: req.requestId,
-      diagnostic: { importer_version: 2, transport: 'native-fetch-pinned', upstream_status: error?.diagnostic?.upstreamStatus || null, protection: protection || null },
+      diagnostic: { importer_version: 3, transport: error?.diagnostic?.transport || 'native-fetch-pinned', upstream_status: error?.diagnostic?.upstreamStatus || null, protection: protection || null, fallback_configured: productScraperConfigured },
     })
   }
 })

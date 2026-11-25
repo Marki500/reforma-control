@@ -24,6 +24,7 @@ async function authenticatedFetch(endpoint, { method = 'POST', body, headers = {
     const reason = result?.code ? ` · ${result.code}` : ''
     const error = new Error(`${result?.error || proxyMessage || `La operación no se pudo completar (HTTP ${response.status}).`}${reason} · Diagnóstico: ${diagnosticId}`)
     error.status = response.status
+    error.code = result?.code || null
     error.stage = result?.stage || null
     error.requestId = diagnosticId
     throw error

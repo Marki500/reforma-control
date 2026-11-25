@@ -21,4 +21,6 @@ test('proxy errors retain HTTP status and request ID and do not call every 502 a
   })
   status = 504
   await assert.rejects(authenticatedRequest('/api/material-images', '{}'), error => error.status === 504 && /demasiado/.test(error.message))
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ error: 'Tienda bloqueada', code: 'STORE_ACCESS_DENIED', request_id: 'blocked-request-id' }), { status: 422 }))
+  await assert.rejects(authenticatedRequest('/api/import-product', '{}'), error => error.code === 'STORE_ACCESS_DENIED' && error.requestId === 'blocked-request-id')
 })

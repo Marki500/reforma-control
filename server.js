@@ -9,6 +9,7 @@ import * as cheerio from 'cheerio'
 import multer from 'multer'
 import { extractProductPrice, structuredProducts } from './server/productPrice.js'
 import { createProductFetcher } from './server/productFetch.js'
+import { safeImportEvent } from './src/utils/productImportDiagnostics.js'
 import { registerMaterialImageRoutes } from './server/materialImageRoutes.js'
 import { inspectPdf, prepareDocumentContent, PdfDocumentError } from './server/pdfDocument.js'
 import { analysisProblem, assertReadableAnalysis } from './src/utils/documentAnalysis.js'
@@ -116,8 +117,8 @@ app.get('/api/health', (_req, res) => {
   res.status(200).json({
     status: 'ok',
     release: 'pdf-vision-v1',
-    features: { ai_pdf_vision: 1, ai_extraction_validation: 1, ai_invoice_async: 1, ai_budget_async: 6, ai_usage_limits: 1, project_invitation_email: 1, project_comments: 1, product_import: 4, material_images: 2 },
-    product_import: { transport: 'native-fetch-pinned', diagnostics: 1, fallback: 'zenrows', fallback_configured: productScraperConfigured, async: 1 },
+    features: { ai_pdf_vision: 1, ai_extraction_validation: 1, ai_invoice_async: 1, ai_budget_async: 6, ai_usage_limits: 1, project_invitation_email: 1, project_comments: 1, product_import: 5, material_images: 2 },
+    product_import: { transport: 'native-fetch-pinned', diagnostics: 2, fallback: 'zenrows', fallback_configured: productScraperConfigured, async: 1 },
     ai: { provider: aiProvider, model: selectedModel, configured, free_only: aiFreeOnly, ...(aiProvider === 'groq' ? { fallback: openRouterApiKey ? 'openrouter/free' : null } : {}) },
     mail: { provider: 'mailjet', configured: Boolean(mailjetApiKey && mailjetSecretKey && appPublicUrl) },
   })
@@ -232,9 +233,13 @@ app.post('/api/send-comment-notifications', requireSession, async (req, res) => 
 
 const productImportJobs = new Map()
 
-async function readImportedProduct(url, diagnostic) {
+async function readImportedProduct(url, diagnostic, onDiagnostic = () => {}) {
+    onDiagnostic({ phase: 'request', transport: 'native-fetch-pinned' })
     const response = await fetchProduct(url, {
-      onDiagnostic: upstream => console.info('[product import:upstream]', { ...diagnostic, ...upstream }),
+      onDiagnostic: upstream => {
+        console.info('[product import:upstream]', { ...diagnostic, ...upstream })
+        onDiagnostic(upstream)
+      },
     })
 
     const html = response.body.toString('utf8')
@@ -329,7 +334,7 @@ async function readImportedProduct(url, diagnostic) {
     return product
 }
 
-function productImportFailure(error, diagnostic, startedAt) {
+function productImportFailure(error, diagnostic, startedAt, events = []) {
     console.error('[product import:error]', { ...diagnostic, ...error?.diagnostic, durationMs: Date.now() - startedAt, message: error?.message || 'Unknown error' })
     const blocked = error?.code === 'STORE_ACCESS_DENIED' || (!error?.code && error?.diagnostic?.upstreamStatus === 403)
     const protection = error?.diagnostic?.protection
@@ -339,13 +344,18 @@ function productImportFailure(error, diagnostic, startedAt) {
         : error instanceof Error ? error.message : 'Error al extraer datos',
       code: error?.code || (blocked ? 'STORE_ACCESS_DENIED' : 'PRODUCT_IMPORT_FAILED'),
       request_id: diagnostic.requestId,
-      diagnostic: { importer_version: 4, transport: error?.diagnostic?.transport || 'native-fetch-pinned', upstream_status: error?.diagnostic?.upstreamStatus || null, protection: protection || null, fallback_configured: productScraperConfigured, phase: error?.diagnostic?.phase || null, network_code: error?.diagnostic?.networkCode || null },
+      diagnostic: { importer_version: 5, request_id: diagnostic.requestId, elapsed_ms: Date.now() - startedAt, events, transport: error?.diagnostic?.transport || 'native-fetch-pinned', upstream_status: error?.diagnostic?.upstreamStatus || null, protection: protection || null, fallback_configured: productScraperConfigured, phase: error?.diagnostic?.phase || null, network_code: error?.diagnostic?.networkCode || null },
     } }
 }
 
 app.post('/api/import-product', requireSession, async (req, res) => {
   const startedAt = Date.now()
-  const diagnostic = { requestId: req.requestId, importerVersion: 4, node: process.version, platform: process.platform }
+  const diagnostic = { requestId: req.requestId, importerVersion: 5, node: process.version, platform: process.platform }
+  const events = []
+  const record = event => {
+    events.push(safeImportEvent({ ...event, atMs: Date.now() - startedAt }))
+    if (events.length > 32) events.shift()
+  }
   const value = normalizeRemoteUrl(req.body?.url)
   if (!value) return res.status(400).json({ error: 'URL requerida' })
   let url
@@ -357,28 +367,36 @@ app.post('/api/import-product', requireSession, async (req, res) => {
       return res.status(429).json({ error: 'Ya hay una importación en curso. Espera a que termine.', code: 'PRODUCT_IMPORT_BUSY', request_id: req.requestId })
     }
     const jobId = randomUUID(), pollToken = randomUUID()
-    const job = { userId: req.authUser.id, pollToken, requestId: req.requestId, status: 'processing', createdAt: startedAt }
+    const job = { userId: req.authUser.id, pollToken, requestId: req.requestId, status: 'processing', createdAt: startedAt, events }
+    record({ phase: 'queued' })
     productImportJobs.set(jobId, job)
-    res.status(202).json({ status: 'processing', job_id: jobId, poll_token: pollToken, request_id: req.requestId })
+    res.status(202).json({ status: 'processing', job_id: jobId, poll_token: pollToken, request_id: req.requestId, diagnostic: productJobDiagnostic(job) })
     const cleanup = setTimeout(() => productImportJobs.delete(jobId), 10 * 60 * 1000)
     cleanup.unref?.()
     setImmediate(async () => {
       try {
-        job.product = await readImportedProduct(url, diagnostic)
+        job.product = await readImportedProduct(url, diagnostic, record)
+        record({ phase: 'complete' })
         job.status = 'complete'
       } catch (error) {
-        job.failure = productImportFailure(error, diagnostic, startedAt)
+        record({ ...error?.diagnostic, code: error?.code })
+        job.failure = productImportFailure(error, diagnostic, startedAt, events)
         job.status = 'error'
       }
     })
     return
   }
   // Preserve compatibility with clients deployed before asynchronous imports.
-  try { res.json(await readImportedProduct(url, diagnostic)) } catch (error) {
-    const failure = productImportFailure(error, diagnostic, startedAt)
+  try { res.json(await readImportedProduct(url, diagnostic, record)) } catch (error) {
+    record({ ...error?.diagnostic, code: error?.code })
+    const failure = productImportFailure(error, diagnostic, startedAt, events)
     res.status(failure.status).json(failure.payload)
   }
 })
+
+function productJobDiagnostic(job) {
+  return { importer_version: 5, request_id: job.requestId, elapsed_ms: Date.now() - job.createdAt, events: job.events }
+}
 
 app.get('/api/import-product/:jobId', (req, res) => {
   res.set('Cache-Control', 'no-store')
@@ -386,9 +404,12 @@ app.get('/api/import-product/:jobId', (req, res) => {
   if (!job || job.pollToken !== req.get('x-product-import-token')) {
     return res.status(404).json({ error: 'La importación ya no está disponible. Vuelve a intentarlo.', code: 'PRODUCT_IMPORT_NOT_FOUND', request_id: req.requestId })
   }
-  if (job.status === 'processing') return res.status(202).json({ status: 'processing', elapsed_ms: Date.now() - job.createdAt, request_id: job.requestId })
-  if (job.status === 'error') return res.status(job.failure.status).json(job.failure.payload)
-  return res.json({ status: 'complete', product: job.product, request_id: job.requestId })
+  res.set('x-import-request-id', job.requestId)
+  if (job.status === 'processing') return res.status(202).json({ status: 'processing', elapsed_ms: Date.now() - job.createdAt, request_id: job.requestId, diagnostic: productJobDiagnostic(job) })
+  // A completed job can fail while this status endpoint remains healthy. Keep
+  // its error in JSON so gateway error-page rules cannot replace the diagnosis.
+  if (job.status === 'error') return res.json({ status: 'error', http_status: job.failure.status, ...job.failure.payload })
+  return res.json({ status: 'complete', product: job.product, request_id: job.requestId, diagnostic: productJobDiagnostic(job) })
 })
 
 app.post('/api/extract-inspiration', requireSession, async (req, res) => {

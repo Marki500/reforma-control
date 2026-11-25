@@ -21,7 +21,7 @@ for (const configured of [false, true]) test(`import API: blocked store with pro
         const scenario = new URL(url.searchParams.get('url')).searchParams.get('fixture')
         if (scenario === 'network') throw Object.assign(new Error('synthetic-key must never reach the logs'), { cause: { code: 'ECONNRESET' } })
         if (scenario === 'slow') await new Promise(resolve => setTimeout(resolve, 500))
-        return new Response('<h1>Pack WC Oxy con tapa amortiguada 3/6 L</h1><script type="application/ld+json">{"@type":"Product","name":"Pack WC Oxy con tapa amortiguada 3/6 L","brand":{"name":"ARTECRISTAL"},"offers":{"price":145,"priceCurrency":"EUR"}}</script>', { headers: { 'content-type': 'text/html' } })
+        return new Response('<h1>Pack WC Oxy con tapa amortiguada 3/6 L</h1><script type="application/ld+json">{"@type":"Product","name":"Pack WC Oxy con tapa amortiguada 3/6 L","brand":{"name":"ARTECRISTAL"},"offers":{"price":145,"priceCurrency":"EUR"}}</script>', { headers: { 'content-type': 'text/plain' } })
       }
       throw new Error('Unexpected URL in network fixture')
     }
@@ -47,7 +47,8 @@ for (const configured of [false, true]) test(`import API: blocked store with pro
       await new Promise(resolve => setTimeout(resolve, 100))
     }
     assert.ok(health, logs)
-    assert.equal(health.features.product_import, 4)
+    assert.equal(health.features.product_import, 5)
+    assert.equal(health.product_import.diagnostics, 2)
     assert.equal(health.product_import.async, 1)
     assert.equal(health.product_import.fallback_configured, configured)
     assert.equal((await fetch(`${base}/api/import-product`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: productUrl }) })).status, 401)
@@ -76,6 +77,7 @@ for (const configured of [false, true]) test(`import API: blocked store with pro
       const start = await fetch(`${base}/api/import-product`, { method: 'POST', headers, body: JSON.stringify({ url: `${productUrl}?fixture=${scenario}`, async: true }) })
       assert.equal(start.status, 202)
       const job = await start.json()
+      assert.equal(job.diagnostic.importer_version, 5)
       const endpoint = `${base}/api/import-product/${job.job_id}`
       assert.equal((await fetch(endpoint)).status, 404, 'a job requires its private polling token')
       assert.equal((await fetch(endpoint, { headers: { 'x-product-import-token': 'wrong-token' } })).status, 404)
@@ -94,16 +96,24 @@ for (const configured of [false, true]) test(`import API: blocked store with pro
         await new Promise(resolve => setTimeout(resolve, 20))
       }
       assert.equal(result.request_id, `async-${scenario}-request`)
+      assert.equal(result.diagnostic.request_id, result.request_id)
+      assert.ok(result.diagnostic.events.length > 0)
       if (scenario === 'slow') {
         assert.equal(status, 200)
         assert.equal(result.product.price, 145)
+        assert.ok(result.diagnostic.events.some(event => event.transport === 'zenrows' && event.upstreamStatus === 200 && event.contentType === 'text/plain'))
+        assert.ok(result.diagnostic.events.some(event => event.hasProduct && event.hasPrice))
       } else if (scenario === 'network') {
-        assert.equal(status, 502)
+        assert.equal(status, 200, 'a known job failure must not trigger proxy gateway-error pages')
+        assert.equal(result.status, 'error')
+        assert.equal(result.http_status, 502)
         assert.equal(result.code, 'PRODUCT_SCRAPER_NETWORK')
         assert.equal(result.diagnostic.network_code, 'ECONNRESET')
         assert.equal(result.diagnostic.phase, 'request')
       } else {
-        assert.equal(status, 422)
+        assert.equal(status, 200)
+        assert.equal(result.status, 'error')
+        assert.equal(result.http_status, 422)
         assert.equal(result.code, 'STORE_ACCESS_DENIED')
       }
       assert.doesNotMatch(JSON.stringify(result) + logs, /synthetic-key|synthetic-session|apikey=/)

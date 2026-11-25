@@ -75,15 +75,17 @@ export function createProductFetcher({ apiKey = '', remote = fetchRemote } = {})
       // Fixed HTTPS endpoint, no redirects, no user cookies or application credentials.
       const result = await remote(endpoint.href, {
         useNativeFetch: true, maxBytes, timeoutMs: 185000, maxRedirects: 0,
-        allowedContentTypes: contentTypes,
+        // ZenRows can return raw HTML with a text/plain content type. The
+        // product/challenge checks below still validate the actual content.
+        allowedContentTypes: [...contentTypes, 'text/plain'],
         onDiagnostic: upstream => onDiagnostic?.({
           transport: 'zenrows', phase: 'response', upstreamStatus: upstream.upstreamStatus,
           contentType: upstream.contentType, bytes: upstream.bytes, elapsedMs: upstream.elapsedMs,
         }),
       })
       const page = inspectPage(result, url)
-      const diagnostic = { transport: 'zenrows', upstreamStatus: result.status, protection: page.upstream.protection }
-      onDiagnostic?.({ ...diagnostic, phase: 'result', bytes: result.body.length })
+      const diagnostic = { transport: 'zenrows', upstreamStatus: result.status, protection: page.upstream.protection, contentType: result.contentType, bytes: result.body.length }
+      onDiagnostic?.({ ...diagnostic, phase: 'result', hasProduct: page.hasProduct, hasPrice: page.price !== null })
       if (page.blocked || !page.hasProduct) {
         throw importError(
           page.blocked ? 'La tienda sigue bloqueando el acceso tras el segundo intento automático.' : 'La tienda no ha devuelto una ficha de producto legible.',

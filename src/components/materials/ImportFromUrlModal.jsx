@@ -15,6 +15,8 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
   const [storeBlocked, setStoreBlocked] = useState(false)
   const [pastedText, setPastedText] = useState('')
   const [pastedDetails, setPastedDetails] = useState({})
+  const [diagnostic, setDiagnostic] = useState(null)
+  const [diagnosticCopied, setDiagnosticCopied] = useState(false)
 
   function handleExtractPaste() {
     try {
@@ -35,9 +37,11 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
     setError(null)
     setStoreBlocked(false)
     setResult(null)
+    setDiagnostic(null)
+    setDiagnosticCopied(false)
 
     try {
-      const data = await importProduct(normalizedUrl)
+      const data = await importProduct(normalizedUrl, { onDiagnostic: setDiagnostic })
       setResult(data)
     } catch (err) {
       setError(err.message || 'No se pudo extraer información de la URL')
@@ -72,6 +76,17 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
     setLoading(false)
     setPastedText('')
     setPastedDetails({})
+    setDiagnostic(null)
+    setDiagnosticCopied(false)
+  }
+
+  async function copyDiagnostic() {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(diagnostic, null, 2))
+      setDiagnosticCopied(true)
+    } catch {
+      setDiagnosticCopied(false)
+    }
   }
 
   return (
@@ -139,6 +154,15 @@ export default function ImportFromUrlModal({ open, onClose, onImport }) {
               </div>
             </div>
           </div>
+        )}
+
+        {diagnostic && (
+          <details className="rounded-xl border border-stone-200 p-3" open={error ? true : undefined}>
+            <summary className="cursor-pointer text-sm font-medium text-stone-700">Diagnóstico de importación</summary>
+            <p className="mt-2 text-xs text-stone-500">Incluye las etapas de lectura, los códigos HTTP y los identificadores para localizar el fallo.</p>
+            <pre className="my-3 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-stone-50 p-3 text-xs text-stone-700">{JSON.stringify(diagnostic, null, 2)}</pre>
+            <Button variant="secondary" onClick={copyDiagnostic}>{diagnosticCopied ? 'Diagnóstico copiado' : 'Copiar diagnóstico'}</Button>
+          </details>
         )}
 
         <details className="rounded-xl border border-stone-200 p-3" open={error ? true : undefined}>

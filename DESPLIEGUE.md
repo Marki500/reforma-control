@@ -2,7 +2,7 @@
 
 ## Importación de tiendas protegidas — 25 de noviembre de 2026
 
-El importador v4 prueba primero la descarga directa. Si recibe un bloqueo, un
+El importador v5 prueba primero la descarga directa. Si recibe un bloqueo, un
 error remoto recuperable, una página que requiere JavaScript o una ficha sin
 precio, hace como máximo un segundo intento mediante ZenRows, cuando está
 configurado. No se limita a Leroy Merlin: utiliza el mismo mecanismo para
@@ -16,8 +16,9 @@ Para activarlo en Coolify:
 2. Añadir `ZENROWS_API_KEY` como variable **del servidor**, sin prefijo `VITE_`.
    No pegar la clave en el chat ni incluirla en el repositorio.
 3. Reconstruir y desplegar backend y frontend. No requiere migraciones ni SDK.
-4. Comprobar `/api/health`: `features.product_import: 4`,
-   `product_import.async: 1` y `product_import.fallback_configured: true`.
+4. Comprobar `/api/health`: `features.product_import: 5`,
+   `product_import.diagnostics: 2`, `product_import.async: 1` y
+   `product_import.fallback_configured: true`.
 5. Importar la ficha real de Leroy y comprobar nombre, foto y precio antes de guardar.
 
 La integración usa el [modo automático de ZenRows](https://docs.zenrows.com/fetch/api-reference)
@@ -57,6 +58,27 @@ En v4 se conservan `phase` (`dns`, `request` o `content-type`), `networkCode`
 (por ejemplo `ECONNRESET`, `EAI_AGAIN`, `UND_ERR_CONNECT_TIMEOUT`), estado HTTP y
 estado interno del fallo. El cliente recibe `PRODUCT_SCRAPER_TIMEOUT` o
 `PRODUCT_SCRAPER_NETWORK` con el identificador de la importación original.
+
+### Diagnóstico visible y contenido text/plain — importador v5
+
+Los logs reales mostraron una respuesta de ZenRows HTTP 200, `text/plain`,
+170087 bytes, que v4 rechazaba con 415 antes de examinar el HTML. V5 admite
+`text/plain` solo en la respuesta del proveedor y mantiene la comprobación de
+ficha de producto y CAPTCHA; no relaja los formatos de la descarga directa.
+
+El modal incorpora **Diagnóstico de importación → Copiar diagnóstico**, disponible
+durante la lectura y después del resultado. Incluye versión del frontend/backend,
+etapas, duración, formato, bytes, HTTP remoto, detección de producto/precio y los
+identificadores original (`request_id`) y de la consulta fallida (`poll_request_id`).
+`api_json: false` señala que no se recibió un error reconocible de nuestra API.
+El informe omite claves, tokens de consulta, cookies, cuerpos y URLs completas.
+
+Si el trabajo termina con error, la consulta de estado responde HTTP 200 con
+`status: error`, `code`, `http_status` y el diagnóstico. El frontend muestra el
+error igualmente; esto evita que las reglas de páginas de error del proxy
+sustituyan un fallo conocido del proveedor por un 502 genérico. Los fallos reales
+de conexión con la propia API siguen detectándose como errores HTTP/transporte.
+Desplegar y recargar frontend y backend juntos para interpretar ese estado.
 
 Comprobado: Leroy rechaza la descarga directa con HTTP 403/DataDome. Las pruebas
 automatizadas usan un proveedor simulado y verifican el recorrido HTTP completo.

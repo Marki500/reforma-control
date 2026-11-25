@@ -15,6 +15,19 @@ function network(t, handler) {
 }
 const html = (body, status = 200) => new Response(body, { status, headers: { 'content-type': 'text/html' } })
 
+test('ZenRows HTML labelled text/plain is parsed while plain text and challenges are rejected', async t => {
+  let body = product
+  network(t, async target => target.hostname === 'api.zenrows.com'
+    ? new Response(body, { headers: { 'content-type': 'text/plain; charset=utf-8' } }) : html(challenge, 403))
+  const importer = createProductFetcher({ apiKey: 'synthetic-key' })
+  const result = await importer(url)
+  assert.equal(extractProductPrice(load(result.body), 'leroymerlin.es'), 145)
+  body = 'Unknown provider failure: not a product page'
+  await assert.rejects(importer(url), error => error.code === 'PRODUCT_PAGE_INCOMPLETE')
+  body = challenge
+  await assert.rejects(importer(url), error => error.code === 'STORE_ACCESS_DENIED')
+})
+
 test('a readable direct product does not call the configured provider', async t => {
   const fetch = network(t, async target => { assert.equal(target.href, url); return html(product) })
   const result = await createProductFetcher({ apiKey: 'synthetic-key' })(url)

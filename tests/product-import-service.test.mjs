@@ -60,3 +60,51 @@ test('client remains compatible with a synchronous backend during deployment', a
   assert.deepEqual(await importProduct('https://shop.example/product'), product)
   assert.equal(calls.length, 1)
 })
+
+test('browser diagnostics separate the original import ID from a failed poll ID', async t => {
+  const reports = []
+  const failure = Object.assign(new Error('Proxy error'), { status: 502, requestId: 'proxy-poll-request-id', apiJson: false })
+  const { importProduct } = await importerFixture(t, { start: job, polls: [failure, failure, failure, failure] })
+  await assert.rejects(importProduct('https://shop.example/product?token=private-url-token', { onDiagnostic: value => reports.push(value) }), error => error === failure)
+  const last = reports.at(-1)
+  assert.equal(last.phase, 'error')
+  assert.equal(last.client_version, 5)
+  assert.equal(last.request_id, job.request_id)
+  assert.equal(last.poll_request_id, 'proxy-poll-request-id')
+  assert.equal(last.api_json, false)
+  assert.equal(last.http_status, 502)
+  assert.doesNotMatch(JSON.stringify(reports), /private-url-token|private-poll-token/)
+})
+
+test('browser diagnostics retain server trace details on a terminal import failure', async t => {
+  const reports = []
+  const failure = Object.assign(new Error('Incomplete page'), { status: 422, code: 'PRODUCT_PAGE_INCOMPLETE', requestId: job.request_id, apiJson: true,
+    diagnostic: { request_id: job.request_id, importer_version: 5, events: [{ transport: 'zenrows', phase: 'result', upstreamStatus: 200, contentType: 'text/plain', bytes: 170087, body: 'private-body' }] },
+  })
+  const { importProduct } = await importerFixture(t, { start: job, polls: [failure] })
+  await assert.rejects(importProduct('https://shop.example/product', { onDiagnostic: value => reports.push(value) }))
+  const last = reports.at(-1)
+  assert.equal(last.importer_version, 5)
+  assert.equal(last.api_json, true)
+  assert.equal(last.events[0].contentType, 'text/plain')
+  assert.equal(last.events[0].upstreamStatus, 200)
+  assert.doesNotMatch(JSON.stringify(reports), /private-body/)
+})
+
+test('a failed job arrives over HTTP 200 and remains an actionable error in the web', async t => {
+  const reports = []
+  const { importProduct, calls } = await importerFixture(t, { start: job, polls: [{ status: 'error', error: 'No se pudo conectar con ZenRows.', code: 'PRODUCT_SCRAPER_NETWORK', http_status: 502, request_id: job.request_id,
+    diagnostic: { importer_version: 5, request_id: job.request_id, events: [{ phase: 'request', transport: 'zenrows', networkCode: 'ECONNRESET' }] },
+  }] })
+  await assert.rejects(importProduct('https://shop.example/product', { onDiagnostic: value => reports.push(value) }), error => {
+    assert.equal(error.code, 'PRODUCT_SCRAPER_NETWORK')
+    assert.equal(error.status, 502)
+    assert.equal(error.responseStatus, 200)
+    assert.match(error.message, /original-request-id/)
+    return true
+  })
+  assert.equal(calls.length, 2)
+  assert.equal(reports.at(-1).http_status, 200)
+  assert.equal(reports.at(-1).api_json, true)
+  assert.equal(reports.at(-1).events[0].networkCode, 'ECONNRESET')
+})

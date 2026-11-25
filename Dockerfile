@@ -22,6 +22,7 @@ COPY --from=build /app/src/utils/documentAnalysis.js ./src/utils/documentAnalysi
 COPY --from=build /app/src/utils/materialImages.js ./src/utils/materialImages.js
 COPY --from=build /app/src/utils/money.js ./src/utils/money.js
 COPY --from=build /app/src/utils/productPrice.js ./src/utils/productPrice.js
+COPY --from=build /app/src/utils/productImportDiagnostics.js ./src/utils/productImportDiagnostics.js
 
 ENV NODE_ENV=production
 

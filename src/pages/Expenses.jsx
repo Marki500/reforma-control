@@ -1,6 +1,7 @@
 import { memberName } from '../utils/memberName'
 import { useEffect, useMemo, useState } from 'react'
 import { PaymentProgress, PaymentPhasesEditor } from '../components/expenses/PaymentPhases'
+import ExpensesByPerson from '../components/expenses/ExpensesByPerson'
 import { phasesOf, phasePaid, phaseDue } from '../utils/paymentPhases'
 import { Link, useSearchParams } from 'react-router-dom'
 import { expenseInvoice } from '../utils/invoices'
@@ -101,15 +102,7 @@ export default function Expenses() {
         ].map(([label, value]) => <div key={label} className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-xs text-stone-500">{label}</p><p className="mt-1 text-xl font-bold text-stone-800">{formatCurrency(value)}</p></div>)}
       </div>
 
-      <section aria-label="Gastos por persona" className="rounded-2xl bg-white p-4 shadow-sm">
-        <h2 className="font-semibold text-stone-800">Quién paga qué</h2>
-        <p className="mt-1 text-xs text-stone-500">Cada gasto se atribuye a una persona, incluidos sus pagos registrados.</p>
-        <div className="mt-3 space-y-2">{[...members.map(member => ({ id: member.user_id, label: memberName(member) })), { id: '', label: 'Sin asignar' }, ...[...new Set(expenses.map(item => item.payer_user_id).filter(id => id && !members.some(member => member.user_id === id)))].map(id => ({ id, label: 'Antiguo miembro' }))].map(person => {
-          const items = expenses.filter(item => (item.payer_user_id || '') === person.id)
-          const total = recordedExpensesSummary(items)
-          return <div key={person.id} className="flex flex-wrap justify-between gap-2 border-t border-stone-100 pt-2 text-sm"><span className="break-all font-medium">{person.label}</span><span className="text-stone-600">Asignado {formatCurrency(total.committed)} · Pagado {formatCurrency(total.paid)} · Pendiente {formatCurrency(total.pending)}</span></div>
-        })}</div>
-      </section>
+      {!error && <ExpensesByPerson expenses={expenses} members={members} loading={loading} />}
 
       {searchParams.get('expense') && <Link to="/gastos" className="inline-block text-sm text-olive underline">Ver todos los gastos</Link>}
       <div className="grid gap-3 rounded-2xl bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
